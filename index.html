@@ -7,28 +7,114 @@
 <meta name="description" content="Цены на ресурсы Albion Online по городам, выгодность переработки и пороги цен закупки и продажи. Данные — Albion Online Data Project.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+SC:wght@600;700&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="head">
-    <div>
-      <h1>Пороги переработки</h1>
-      <p class="lede">Цены на ресурсы по городам, выгодность переработки и пороги закупки и продажи. Данные — <a href="https://www.albion-online-data.com/" target="_blank" rel="noopener">Albion Online Data Project</a>: цены, которые видели игроки с запущенным клиентом.</p>
+<header class="bar">
+  <div class="bar-in">
+    <a class="brand" href="#refine">Пороги<span> переработки</span></a>
+    <nav class="tabs" role="tablist" aria-label="Разделы">
+      <button role="tab" id="tab-prices" aria-controls="view-prices" data-view="prices">Цены</button>
+      <button role="tab" id="tab-refine" aria-controls="view-refine" data-view="refine">Переработка</button>
+      <button role="tab" id="tab-calc" aria-controls="view-calc" data-view="calc">Пороги</button>
+    </nav>
+    <div class="bar-end">
+      <span class="status" id="status" role="status" aria-live="polite"></span>
+      <button class="btn ghost" id="open-settings" type="button" aria-haspopup="dialog"><span class="gear" aria-hidden="true"></span><span id="sumhint">Условия</span></button>
     </div>
-    <div class="status" id="status" role="status" aria-live="polite"></div>
-  </header>
+  </div>
+</header>
 
-  <nav class="tabs" role="tablist" aria-label="Разделы">
-    <button role="tab" id="tab-prices" aria-controls="view-prices" data-view="prices">Цены по городам</button>
-    <button role="tab" id="tab-refine" aria-controls="view-refine" data-view="refine">Выгодность переработки</button>
-    <button role="tab" id="tab-calc" aria-controls="view-calc" data-view="calc">Пороги</button>
-  </nav>
+<main class="wrap">
+  <!-- ЦЕНЫ -->
+  <section class="view" id="view-prices" role="tabpanel" aria-labelledby="tab-prices" hidden>
+    <div class="intro">
+      <h1>Цены по городам</h1>
+      <p>Самый дешёвый лот и лучший ордер на закупку в каждом городе. Обведены лучшие места: где купить дешевле и где продать дороже. Нажми на строку, чтобы открыть график.</p>
+    </div>
+    <div class="filters">
+      <div class="fgroup"><span class="flabel">Ресурсы</span><div class="chips" id="p-fam" role="group" aria-label="Ресурсы"></div></div>
+      <div class="fgroup"><span class="flabel">Тиры</span><div class="chips tiers-chips" id="p-tiers" role="group" aria-label="Тиры"></div></div>
+      <div class="fgroup"><span class="flabel">Зачарование</span><div class="chips" id="p-ench" role="group" aria-label="Зачарование"></div></div>
+      <div class="fgroup"><span class="flabel">Показать</span><div class="chips" id="p-kind" role="group" aria-label="Что показывать"></div></div>
+      <button class="btn" id="p-reload" type="button">Обновить</button>
+    </div>
+    <div class="key"><span class="k-sell">Лот</span> за сколько купить сразу <span class="k-buy">Ордер</span> за сколько продать сразу <span class="k-age">возраст цены</span></div>
+    <div class="tablebox"><table class="grid prices" id="p-table"></table></div>
+    <div class="chartcard" id="p-chartcard" hidden>
+      <div class="chart-h">
+        <h2 id="p-chart-title"></h2>
+        <div class="chips" id="p-period" role="group" aria-label="Период"></div>
+      </div>
+      <div class="chart-legend" id="p-legend"></div>
+      <div class="chart" id="p-chart"></div>
+      <p class="note" id="p-chart-note"></p>
+    </div>
+  </section>
 
-  <details class="settings" id="settings">
-    <summary><span>Условия расчёта</span><span class="hint" id="sumhint"></span></summary>
-    <div class="sgrid">
+  <!-- ПЕРЕРАБОТКА -->
+  <section class="view" id="view-refine" role="tabpanel" aria-labelledby="tab-refine" hidden>
+    <div class="intro">
+      <h1>Что выгодно перерабатывать</h1>
+      <p>Переработка в бонусном городе ресурса. Сырьё и материал тира ниже берутся там, где дешевле, продажа — там, где дороже. Метка «история» — свежего лота нет, цена взята за 7 дней. Нажми на строку, чтобы открыть её в «Порогах».</p>
+    </div>
+    <div class="filters">
+      <div class="fgroup"><span class="flabel">Ресурсы</span><div class="chips" id="r-fam" role="group" aria-label="Ресурсы"></div></div>
+      <div class="fgroup"><span class="flabel">Тиры</span><div class="chips tiers-chips" id="r-tiers" role="group" aria-label="Тиры"></div></div>
+      <div class="fgroup"><span class="flabel">Зачарование</span><div class="chips" id="r-ench" role="group" aria-label="Зачарование"></div></div>
+      <div class="fgroup"><span class="flabel">Сортировка</span>
+        <select id="r-sort" aria-label="Сортировка">
+          <option value="margin">по марже</option>
+          <option value="stack">по прибыли за стак</option>
+          <option value="tier">по ресурсу и тиру</option>
+        </select>
+      </div>
+      <label class="switch"><input type="checkbox" id="r-onlyplus"><span>Только в плюсе</span></label>
+      <button class="btn" id="r-reload" type="button">Обновить</button>
+    </div>
+    <div class="tablebox"><table class="grid refine" id="r-table"></table></div>
+  </section>
+
+  <!-- ПОРОГИ -->
+  <section class="view" id="view-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
+    <div class="intro">
+      <h1>Пороги цен</h1>
+      <p id="c-city"></p>
+    </div>
+    <div class="filters">
+      <div class="fgroup"><span class="flabel">Ресурс</span><div class="chips" id="c-fam" role="group" aria-label="Ресурс"></div></div>
+      <div class="fgroup"><span class="flabel">Тиры</span><div class="chips tiers-chips" id="c-tiers" role="group" aria-label="Тиры"></div></div>
+      <button class="btn primary" id="c-fill" type="button">Подставить цены с рынка</button>
+      <button class="btn" id="c-reset" type="button">Очистить</button>
+    </div>
+    <div id="c-tiers-list" class="tiercards"></div>
+  </section>
+
+  <details class="how">
+    <summary>Как считается</summary>
+    <ul>
+      <li><b>Себестоимость 1 шт.</b> = (N × сырьё + 1 × материал тира ниже) × (1 − возврат) + станция. N: T4 — 2, T5 — 3, T6 — 4, T7 и T8 — 5. Возвращённые ресурсы снова идут в переработку, поэтому возврат снижает себестоимость.</li>
+      <li>При закупке через свой ордер к цене сырья и купленного материала добавляется 2,5%.</li>
+      <li><b>Выручка с 1 шт.</b> = цена продажи × (1 − запас на уценку) × (1 − налоги).</li>
+      <li><b>Покупай до</b> — максимальная цена, при которой прибыль не ниже желаемой маржи. <b>Безубыток</b> — та же цена при марже 0.</li>
+      <li><b>Свой крафт</b> вместо цены материала тира ниже берёт себестоимость из карточки этого тира.</li>
+      <li>Зачарованный камень даёт обычные блоки, но больше. Его цена делится на множитель из условий и сравнивается с обычным камнем.</li>
+      <li><b>Медиана и P80</b> считаются по дневным средним ценам за 7 дней с весом по объёму продаж. P80 — цена, ниже которой прошло 80% продаж.</li>
+      <li>Перевозка, риск в пути и скорость продажи не учитываются.</li>
+    </ul>
+  </details>
+  <footer class="foot">Данные — <a href="https://www.albion-online-data.com/" target="_blank" rel="noopener">Albion Online Data Project</a>: цены, которые видели игроки с запущенным клиентом, поэтому смотри на возраст цены. Не связано с Sandbox Interactive.</footer>
+</main>
+
+<dialog class="sheet" id="settings" aria-labelledby="settings-title">
+  <form method="dialog" class="sheet-in">
+    <div class="sheet-h">
+      <h2 id="settings-title">Условия расчёта</h2>
+      <button class="btn ghost close" value="close" aria-label="Закрыть">Готово</button>
+    </div>
+    <fieldset>
+      <legend>Рынок</legend>
       <div class="field">
         <label for="s-server">Сервер</label>
         <select id="s-server">
@@ -38,34 +124,54 @@
         </select>
       </div>
       <div class="field">
-        <span class="lbl">Города</span>
-        <label class="chk"><input type="checkbox" id="s-caerleon"> Карлеон (красная зона)</label>
-        <label class="chk"><input type="checkbox" id="s-brecilien"> Брецилиен</label>
+        <span class="lbl">Учитывать города</span>
+        <label class="switch"><input type="checkbox" id="s-caerleon"><span>Карлеон (красная зона)</span></label>
+        <label class="switch"><input type="checkbox" id="s-brecilien"><span>Брецилиен</span></label>
       </div>
       <div class="field">
         <label for="s-mode">Какие цены брать</label>
         <select id="s-mode">
           <option value="safe">Осторожно: свежие лоты, сверенные с историей</option>
           <option value="live">Только текущие лоты</option>
-          <option value="hist">Только история 7 дней</option>
+          <option value="hist">Только история за 7 дней</option>
         </select>
-        <small>«Осторожно»: продажа не выше P80 за 7 дней, устаревшие лоты заменяются медианой</small>
+        <small>«Осторожно»: продажа не выше P80 за неделю, устаревший лот заменяется медианой</small>
       </div>
       <div class="field">
-        <label for="s-age">Лот считается свежим, часов</label>
+        <label for="s-age">Лот свежий, если ему не больше, часов</label>
         <input type="number" id="s-age" min="1" max="168" step="1">
       </div>
+    </fieldset>
+    <fieldset>
+      <legend>Переработка</legend>
       <div class="field">
         <label for="s-rrr">Возврат ресурсов</label>
         <select id="s-rrr">
           <option value="0.367">Бонусный город, без фокуса — 36,7%</option>
-          <option value="0.539">Бонусный город + фокус — 53,9%</option>
+          <option value="0.539">Бонусный город с фокусом — 53,9%</option>
           <option value="0.152">Обычный город, без фокуса — 15,2%</option>
-          <option value="0.435">Обычный город + фокус — 43,5%</option>
+          <option value="0.435">Обычный город с фокусом — 43,5%</option>
           <option value="custom">Своё значение</option>
         </select>
         <input type="number" id="s-rrrc" min="0" max="90" step="0.1" placeholder="%" hidden aria-label="Свой возврат, %">
       </div>
+      <div class="field">
+        <label for="s-station">Станция, серебра за 1 крафт</label>
+        <input type="number" id="s-station" min="0" step="1">
+        <small>Видно в окне станции перед крафтом</small>
+      </div>
+      <div class="field">
+        <span class="lbl">Камень: во сколько раз больше блоков даёт зачарование</span>
+        <div class="ench3">
+          <label><span class="e1">.1</span><input type="number" id="s-m1" min="1" step="0.5"></label>
+          <label><span class="e2">.2</span><input type="number" id="s-m2" min="1" step="0.5"></label>
+          <label><span class="e3">.3</span><input type="number" id="s-m3" min="1" step="0.5"></label>
+        </div>
+        <small>Сверь со станцией каменщика</small>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Деньги</legend>
       <div class="field">
         <label for="s-fee">Налоги при продаже</label>
         <select id="s-fee">
@@ -76,9 +182,8 @@
         </select>
       </div>
       <div class="field">
-        <label for="s-station">Станция, серебра за 1 крафт</label>
-        <input type="number" id="s-station" min="0" step="1">
-        <small>Видно в окне станции перед крафтом</small>
+        <span class="lbl">Закупка</span>
+        <label class="switch"><input type="checkbox" id="s-order"><span>Через свой ордер, +2,5%</span></label>
       </div>
       <div class="field">
         <label for="s-margin">Желаемая маржа, %</label>
@@ -88,91 +193,11 @@
       <div class="field">
         <label for="s-buffer">Запас на уценку, %</label>
         <input type="number" id="s-buffer" min="0" max="50" step="0.5">
-        <small>Насколько дешевле в среднем уйдёт товар</small>
+        <small>Насколько дешевле в среднем уйдёт товар из-за перевыставлений</small>
       </div>
-      <div class="field">
-        <span class="lbl">Закупка</span>
-        <label class="chk"><input type="checkbox" id="s-order"> Через свой ордер (+2,5%)</label>
-      </div>
-      <div class="field">
-        <span class="lbl">Камень: сколько блоков даёт зачарование</span>
-        <div class="ench">
-          <input type="number" id="s-m1" min="1" step="0.5" aria-label="Множитель .1">
-          <input type="number" id="s-m2" min="1" step="0.5" aria-label="Множитель .2">
-          <input type="number" id="s-m3" min="1" step="0.5" aria-label="Множитель .3">
-        </div>
-        <small>×.1 · ×.2 · ×.3 к обычному камню. Сверь со станцией</small>
-      </div>
-    </div>
-  </details>
-
-  <!-- ЦЕНЫ -->
-  <section class="view" id="view-prices" role="tabpanel" aria-labelledby="tab-prices" hidden>
-    <div class="toolbar">
-      <div class="chips" id="p-fam" role="group" aria-label="Ресурс"></div>
-      <div class="chips" id="p-kind" role="group" aria-label="Что показывать"></div>
-      <div class="chips" id="p-ench" role="group" aria-label="Зачарование"></div>
-      <button class="btn" id="p-reload" type="button">Обновить цены</button>
-    </div>
-    <p class="legendnote">В ячейке: <span class="tag sell">продажа</span> — самый дешёвый лот, за сколько можно купить сразу; <span class="tag buy">закупка</span> — лучший ордер на закупку, за сколько можно продать сразу. Время — возраст цены. Рамка — лучший город для покупки и для продажи. Нажми на строку, чтобы увидеть график.</p>
-    <div class="tablebox"><table class="grid" id="p-table"></table></div>
-    <div class="chartcard" id="p-chartcard" hidden>
-      <div class="chart-h">
-        <h2 id="p-chart-title"></h2>
-        <div class="chips" id="p-period" role="group" aria-label="Период"></div>
-      </div>
-      <div class="chart-legend" id="p-legend"></div>
-      <div class="chart" id="p-chart"></div>
-      <p class="small muted" id="p-chart-note"></p>
-    </div>
-  </section>
-
-  <!-- ПЕРЕРАБОТКА -->
-  <section class="view" id="view-refine" role="tabpanel" aria-labelledby="tab-refine" hidden>
-    <div class="toolbar">
-      <div class="chips" id="r-fam" role="group" aria-label="Ресурсы"></div>
-      <div class="chips" id="r-ench" role="group" aria-label="Зачарование"></div>
-      <label class="chk"><input type="checkbox" id="r-onlyplus"> Только в плюсе</label>
-      <label class="selwrap" for="r-sort">Сортировка
-        <select id="r-sort">
-          <option value="margin">по марже</option>
-          <option value="stack">по прибыли за стак</option>
-          <option value="tier">по ресурсу и тиру</option>
-        </select>
-      </label>
-      <button class="btn" id="r-reload" type="button">Обновить цены</button>
-    </div>
-    <p class="legendnote">Переработка в бонусном городе ресурса. Сырьё и материал прошлого тира — где дешевле всего, продажа — где дороже всего, по правилам из «Какие цены брать». <span class="tag hist">история</span> — свежего лота нет, взята медиана или P80 за 7 дней. Нажми на строку, чтобы открыть её в «Порогах».</p>
-    <div class="tablebox"><table class="grid refine" id="r-table"></table></div>
-  </section>
-
-  <!-- ПОРОГИ -->
-  <section class="view" id="view-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
-    <div class="toolbar">
-      <div class="chips" id="c-fam" role="group" aria-label="Ресурс"></div>
-      <button class="btn primary" id="c-fill" type="button">Подставить цены с рынка</button>
-      <button class="btn" id="c-reset" type="button">Очистить</button>
-    </div>
-    <div class="cityline" id="c-city"></div>
-    <div id="c-tiers" class="tiers"></div>
-  </section>
-
-  <details class="how">
-    <summary>Как считается</summary>
-    <ul>
-      <li><b>Себестоимость 1 шт.</b> = (N × сырьё + 1 × материал прошлого тира) × (1 − возврат) + станция. N: T4 — 2, T5 — 3, T6 — 4, T7 и T8 — 5. Возвращённые ресурсы снова идут в переработку, поэтому возврат снижает себестоимость.</li>
-      <li>При закупке через свой ордер к цене сырья и купленного материала добавляется 2,5%.</li>
-      <li><b>Выручка с 1 шт.</b> = цена продажи × (1 − запас на уценку) × (1 − налоги).</li>
-      <li><b>Покупай до</b> — максимальная цена, при которой прибыль не ниже желаемой маржи. <b>Безубыток</b> — та же цена при марже 0.</li>
-      <li><b>Свой крафт</b> вместо цены материала прошлого тира берёт себестоимость из карточки тира ниже.</li>
-      <li>Зачарованный камень даёт обычные блоки, но больше. Его цена делится на множитель из настроек и сравнивается с обычным камнем.</li>
-      <li><b>Медиана и P80</b> считаются по дневным средним ценам за 7 дней с весом по объёму продаж. P80 — цена, ниже которой прошло 80% продаж.</li>
-      <li>Перевозка, риск в пути и скорость продажи не учитываются.</li>
-    </ul>
-  </details>
-
-  <footer class="foot small muted">Не связано с Sandbox Interactive. Цены собирают игроки, они бывают устаревшими — смотри на возраст цены.</footer>
-</div>
+    </fieldset>
+  </form>
+</dialog>
 <div class="tooltip" id="tooltip" hidden></div>
 <script src="app.js"></script>
 </body>
