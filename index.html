@@ -31,7 +31,7 @@
   <section class="view" id="view-prices" role="tabpanel" aria-labelledby="tab-prices" hidden>
     <div class="intro">
       <h1>Цены по городам</h1>
-      <p>Самый дешёвый лот и лучший ордер на закупку в каждом городе. Обведены лучшие места: где купить дешевле и где продать дороже. Нажми на строку, чтобы открыть график.</p>
+      <p>По каким ценам продают и покупают в каждом городе. Обведены лучшие места: где купить дешевле всего и где продать дороже всего. Время рядом с ценой — сколько часов назад её видели. Нажми на строку, чтобы открыть график.</p>
     </div>
     <div class="filters">
       <div class="fgroup"><span class="flabel">Ресурсы</span><div class="chips" id="p-fam" role="group" aria-label="Ресурсы"></div></div>
@@ -40,7 +40,10 @@
       <div class="fgroup"><span class="flabel">Показать</span><div class="chips" id="p-kind" role="group" aria-label="Что показывать"></div></div>
       <button class="btn" id="p-reload" type="button">Обновить</button>
     </div>
-    <div class="key"><span class="k-sell">Лот</span> за сколько купить сразу <span class="k-buy">Ордер</span> за сколько продать сразу <span class="k-age">возраст цены</span></div>
+    <div class="key">
+      <div class="krow"><span class="ptag s">продают</span><span>самый дешёвый лот. Купить сразу — по этой цене. Продать своим лотом — выставляй чуть дешевле.</span></div>
+      <div class="krow"><span class="ptag b">покупают</span><span>лучший ордер на закупку. Продать сразу — по этой цене. Купить своим ордером — ставь чуть дороже.</span></div>
+    </div>
     <div class="tablebox"><table class="grid prices" id="p-table"></table></div>
     <div class="chartcard" id="p-chartcard" hidden>
       <div class="chart-h">
@@ -125,8 +128,8 @@
       </div>
       <div class="field">
         <span class="lbl">Учитывать города</span>
-        <label class="switch"><input type="checkbox" id="s-caerleon"><span>Карлеон (красная зона)</span></label>
-        <label class="switch"><input type="checkbox" id="s-brecilien"><span>Брецилиен</span></label>
+        <label class="switch"><input type="checkbox" id="s-caerleon"><span>Caerleon (красная зона)</span></label>
+        <label class="switch"><input type="checkbox" id="s-brecilien"><span>Brecilien</span></label>
       </div>
       <div class="field">
         <label for="s-mode">Какие цены брать</label>
@@ -199,6 +202,7 @@
   </form>
 </dialog>
 <div class="tooltip" id="tooltip" hidden></div>
+<script src="names.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

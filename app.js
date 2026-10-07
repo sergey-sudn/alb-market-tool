@@ -9,10 +9,8 @@ const SERVERS = {
 };
 const SERVER_RU = { europe: "Европа", west: "Америка", east: "Азия" };
 const CITIES = ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst", "Caerleon", "Brecilien"];
-const CITY_RU = {
-  Bridgewatch: "Бриджвотч", Martlock: "Мартлок", Thetford: "Тетфорд", "Fort Sterling": "Форт Стерлинг",
-  Lymhurst: "Лимхерст", Caerleon: "Карлеон", Brecilien: "Брецилиен",
-};
+// города показываем так, как они называются в игре
+const CITY_RU = Object.fromEntries(["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst", "Caerleon", "Brecilien"].map((c) => [c, c]));
 const CITY_COLOR = Object.fromEntries(CITIES.map((c, i) => [c, `var(--c${i + 1})`]));
 const FAM = {
   stone: { tab: "Камень",  raw: "ROCK",  mat: "STONEBLOCK", rawRu: "Камень",  matRu: "Блок",   city: "Bridgewatch", stone: true },
@@ -34,6 +32,7 @@ function matId(f, t, e = 0) {
   return `T${t}_${b}_LEVEL${e}@${e}`;
 }
 function itemLabel(id) {
+  if (typeof RU_NAMES !== "undefined" && RU_NAMES[id]) return RU_NAMES[id];
   const m = /^T(\d)_([A-Z]+)(?:_LEVEL(\d)@\d)?$/.exec(id);
   if (!m) return id;
   const [, t, base, e] = m;
@@ -312,8 +311,8 @@ function parseId(id) {
   const m = /^T(\d)_([A-Z]+)(?:_LEVEL(\d)@\d)?$/.exec(id); if (!m) return null;
   const t = +m[1], base = m[2], e = +(m[3] || 0);
   for (const f of FAMS) {
-    if (FAM[f].raw === base) return { t, e, f, kind: "raw", name: FAM[f].rawRu };
-    if (FAM[f].mat === base) return { t, e, f, kind: "mat", name: FAM[f].matRu };
+    if (FAM[f].raw === base) return { t, e, f, kind: "raw", name: itemLabel(id) };
+    if (FAM[f].mat === base) return { t, e, f, kind: "mat", name: itemLabel(id) };
   }
   return null;
 }
@@ -369,12 +368,12 @@ function priceRow(id, cities, maxAge) {
     if (!rec) { h += `<td><span class="empty">…</span></td>`; continue; }
     const s = liveOf(id, c, "sell"), b = liveOf(id, c, "buy");
     if (!s && !b) { h += `<td><span class="empty">нет</span></td>`; continue; }
-    const age = Math.min(s ? s.age : Infinity, b ? b.age : Infinity);
-    const ageCls = age < 1 ? "fresh" : age > maxAge ? "old" : "";
-    h += `<td><div class="cell">`
-      + (s ? `<span class="s${s.p === minSell && s.age <= maxAge ? " best" : ""}" title="Самый дешёвый лот">${fmt(s.p)}</span>` : `<span class="empty">—</span>`)
-      + (b ? `<span class="b${b.p === maxBuy && b.age <= maxAge ? " best" : ""}" title="Лучший ордер на закупку">${fmt(b.p)}</span>` : `<span class="empty">—</span>`)
-      + `<span class="a ${ageCls}">${fmtAge(age)}</span></div></td>`;
+    const line = (o, kind, best) => {
+      if (!o) return `<span class="ptag ${kind}">${kind === "s" ? "продают" : "покупают"}</span><span class="pv empty">нет</span><span></span>`;
+      const ac = o.age < 1 ? "fresh" : o.age > maxAge ? "old" : "";
+      return `<span class="ptag ${kind}">${kind === "s" ? "продают" : "покупают"}</span><span class="pv${best ? " best" : ""}">${fmt(o.p)}</span><span class="pa ${ac}">${fmtAge(o.age)}</span>`;
+    };
+    h += `<td><div class="cell">${line(s, "s", s && s.p === minSell && s.age <= maxAge)}${line(b, "b", b && b.p === maxBuy && b.age <= maxAge)}</div></td>`;
   }
   return h + "</tr>";
 }
@@ -531,7 +530,7 @@ function renderRefineTable() {
   for (const r of rows) {
     const L = FAM[r.f];
     const rawExtra = r.raw && L.stone && r.raw.ench ? `, бери T${r.t}.${r.raw.ench} по ${fmt(r.raw.unit)}` : "";
-    h += `<tr tabindex="0" data-f="${r.f}" data-t="${r.t}"><td><div class="item">${tierBadge(r.t, r.e)}<div class="iname"><b>${L.matRu}</b><small>${L.rawRu} ×${N[r.t]} + ${L.matRu} T${r.t - 1}</small></div></div></td>`;
+    h += `<tr tabindex="0" data-f="${r.f}" data-t="${r.t}"><td><div class="item">${tierBadge(r.t, r.e)}<div class="iname"><b>${itemLabel(matId(r.f, r.t, r.e))}</b><small>${itemLabel(rawId(r.f, r.t, r.e))} ×${N[r.t]} + ${itemLabel(matId(r.f, r.t - 1, r.e))}</small></div></div></td>`;
     h += whereCell(r.raw, rawExtra) + whereCell(r.prev) + whereCell(r.sell);
     if (!r.ok) { h += `<td colspan="6"><span class="empty">не хватает цен</span></td></tr>`; continue; }
     const cls = r.profit >= 0 ? "pos" : "neg";
@@ -593,29 +592,30 @@ function buildTiers() {
   const f = S.cFam, L = FAM[f], P = S.calc[f], main = $("c-tiers-list"); main.innerHTML = "";
   for (const t of [...S.cTiers].sort((a, b) => b - a)) {
     const p = P[t], own = !!p.own && t > 4;
+    const nm = { raw: itemLabel(rawId(f, t)), prev: itemLabel(matId(f, t - 1)), mat: itemLabel(matId(f, t)) };
     const card = document.createElement("section"); card.className = `tcard t${t}`; card.setAttribute("aria-labelledby", `h-${t}`);
     card.innerHTML = `
       <div class="tcard-h">
-        <div class="ttl"><span class="big" id="h-${t}">T${t}</span><span class="recipe">${L.rawRu} T${t} ×${N[t]} + ${L.matRu} T${t - 1} → ${L.matRu} T${t}</span></div>
+        <div class="ttl"><span class="big" id="h-${t}">T${t}</span><span class="recipe">${nm.raw} ×${N[t]} + ${nm.prev} → ${nm.mat}</span></div>
         <span id="pill-${t}"></span>
       </div>
       <div class="inputs">
-        <div class="field"><div class="lblrow"><label for="raw-${t}">${L.rawRu} T${t}, покупка</label></div>
+        <div class="field"><div class="lblrow"><label for="raw-${t}">${nm.raw}, покупка</label></div>
           <input type="number" id="raw-${t}" min="0" step="1" value="${p.raw ?? ""}"><span class="srcnote" id="n-raw-${t}"></span></div>
-        <div class="field"><div class="lblrow"><label for="prev-${t}">${L.matRu} T${t - 1}</label>
+        <div class="field"><div class="lblrow"><label for="prev-${t}">${nm.prev}</label>
             <span class="seg" role="group" aria-label="Откуда материал T${t - 1}">
               <button type="button" id="mk-${t}" aria-pressed="${!own}">рынок</button>
               <button type="button" id="ow-${t}" aria-pressed="${own}" ${t === 4 ? 'disabled title="T3 считается только по рынку"' : ""}>свой крафт</button>
             </span></div>
           <input type="number" id="prev-${t}" min="0" step="1" value="${p.prev ?? ""}" ${own ? "hidden" : ""}>
           <div class="owncost" id="ownc-${t}" ${own ? "" : "hidden"}></div><span class="srcnote" id="n-prev-${t}"></span></div>
-        <div class="field"><div class="lblrow"><label for="sell-${t}">${L.matRu} T${t}, продажа</label></div>
+        <div class="field"><div class="lblrow"><label for="sell-${t}">${nm.mat}, продажа</label></div>
           <input type="number" id="sell-${t}" min="0" step="1" value="${p.sell ?? ""}"><span class="srcnote" id="n-sell-${t}"></span></div>
       </div>
       <div class="limits">
-        <div class="lim" id="L-raw-${t}"><span class="k">${L.rawRu} T${t}: покупай до</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
-        <div class="lim" id="L-prev-${t}"><span class="k">${L.matRu} T${t - 1}: покупай до</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
-        <div class="lim" id="L-sell-${t}"><span class="k">${L.matRu} T${t}: продавай от</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
+        <div class="lim" id="L-raw-${t}"><span class="k">${nm.raw}: покупай до</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
+        <div class="lim" id="L-prev-${t}"><span class="k">${nm.prev}: покупай до</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
+        <div class="lim" id="L-sell-${t}"><span class="k">${nm.mat}: продавай от</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
       </div>
       ${L.stone ? `<div class="enchrow" id="E-${t}"></div>` : ""}
       <div class="stats" id="st-${t}"></div>`;
