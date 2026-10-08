@@ -356,7 +356,7 @@ function icon(id, size = 42, tier = true) {
   // своя копия иконки из images/items; если её нет — официальный сервер иконок; если и его нет — нарисованная заглушка
   const local = `images/items/${id.replace("@", "_")}.webp`;
   const remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
-  return `<span class="ic t${p.t}" style="--s:${size}px"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${FAM_ICON[p.f]}"/></svg>`
+  return `<span class="ic t${p.t}" style="--s:${size}px;--tc:var(--t${p.t})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${FAM_ICON[p.f]}"/></svg>`
     + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`
     + (tier ? `<span class="tier">T${p.t}${p.e ? `<sup>.${p.e}</sup>` : ""}</span>` : "") + `</span>`;
 }
@@ -796,7 +796,7 @@ function buildTiers() {
     const nm = { raw: itemLabel(rawId(f, t)), prev: itemLabel(matId(f, t - 1)), mat: itemLabel(matId(f, t)) };
     const card = document.createElement("section"); card.className = `panel tcard t${t}`; card.style.setProperty("--tc", `var(--t${t})`); card.setAttribute("aria-labelledby", `h-${t}`);
     card.innerHTML = `
-      <div class="tcard-h">${icon(matId(f, t), 56)}<div class="tc-title"><span class="big" id="h-${t}">T${t}</span><span class="recipe">${esc(nm.raw)} ×${N[t]} + ${esc(nm.prev)} → ${esc(nm.mat)}</span></div><span id="pill-${t}"></span></div>
+      <div class="tcard-h">${icon(matId(f, t), 56)}<div class="tc-title"><span class="recipe" id="h-${t}">${esc(nm.raw)} ×${N[t]} + ${esc(nm.prev)} → ${esc(nm.mat)}</span></div><span id="pill-${t}"></span></div>
       <div class="trio">
         <div class="field"><div class="lblrow"><label class="lbl-ic" for="raw-${t}">${icon(rawId(f, t), 28, false)}${esc(nm.raw)}, покупка</label></div>
           <input type="number" id="raw-${t}" min="0" step="1" inputmode="numeric" value="${p.raw ?? ""}"><span class="srcnote" id="n-raw-${t}"></span></div>

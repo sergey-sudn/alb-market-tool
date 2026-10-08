@@ -131,7 +131,7 @@ select option{background:var(--panel-solid);color:var(--ink)}
 .ic svg{width:55%;height:55%;fill:none;stroke:var(--tc);stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
 .ic img{position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px);object-fit:contain}
 .ic .tier{position:absolute;right:-6px;bottom:-6px;font-family:var(--f-display);font-size:9px;font-weight:700;line-height:1;padding:3px 4px;border-radius:6px;white-space:nowrap;
-  color:var(--tc);background:var(--bg-solid);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tc) 55%,transparent)}
+  color:var(--tc);background:color-mix(in srgb,var(--tc) 16%,var(--bg-solid));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tc) 65%,transparent)}
 .ic .tier sup{font-size:8px;vertical-align:top}
 .item{display:flex;align-items:center;gap:14px;min-width:0}
 .iname{display:flex;flex-direction:column;min-width:0;line-height:1.25}
@@ -270,7 +270,7 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
 .tc-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap}
 .tcard-h .big{font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;color:var(--tc);text-shadow:0 0 24px color-mix(in srgb,var(--tc) 40%,transparent)}
 [data-theme="aurora"] .tcard-h .big{text-shadow:none}
-.tcard-h .recipe{color:var(--ink-2);font-size:14px}
+.tcard-h .recipe{color:var(--ink);font-size:16px;font-weight:600}
 .lbl-ic{display:inline-flex;align-items:center;gap:8px}
 .lbl-ic .ic{border-radius:8px}
 .pill{font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px;white-space:nowrap;display:inline-block}
