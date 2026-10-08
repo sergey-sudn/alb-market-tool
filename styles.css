@@ -266,10 +266,13 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
 .tiercards{display:flex;flex-direction:column;gap:16px;min-width:0}
 .tcard{--tc:var(--muted);padding:20px 22px;display:flex;flex-direction:column;gap:16px;
   background:radial-gradient(420px 200px at 0% 0%,color-mix(in srgb,var(--tc) 14%,transparent),transparent 70%),var(--panel);border-color:color-mix(in srgb,var(--tc) 28%,transparent)}
-.tcard-h{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.tcard-h{display:flex;align-items:center;gap:16px}
+.tc-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap}
 .tcard-h .big{font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;color:var(--tc);text-shadow:0 0 24px color-mix(in srgb,var(--tc) 40%,transparent)}
 [data-theme="aurora"] .tcard-h .big{text-shadow:none}
-.tcard-h .recipe{flex:1;min-width:200px;color:var(--ink-2);font-size:14px}
+.tcard-h .recipe{color:var(--ink-2);font-size:14px}
+.lbl-ic{display:inline-flex;align-items:center;gap:8px}
+.lbl-ic .ic{border-radius:8px}
 .pill{font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px;white-space:nowrap;display:inline-block}
 .pill.good{background:var(--good-bg);color:var(--good)} .pill.warn{background:var(--warn-bg);color:var(--warn)}
 .pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.none{background:var(--inset);color:var(--muted)}
@@ -290,9 +293,11 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
 .stats{display:flex;flex-wrap:wrap;gap:6px 24px;font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
 .stats b{color:var(--ink);font-weight:600}
 .stats b.pos{color:var(--good)} .stats b.neg{color:var(--bad)}
-.cheat-row{display:flex;align-items:center;gap:10px;font-size:14px;padding:4px 0}
+.cheat-row{display:flex;align-items:center;gap:12px;font-size:14px;padding:5px 0}
+.cheat-row .ic{border-radius:9px}
+.cheat-row .ic .tier{font-size:8px;right:-5px;bottom:-5px}
 .cheat-row i{width:8px;height:8px;border-radius:2px;background:var(--tc);box-shadow:0 0 8px var(--tc);flex:none}
-.cheat-row span{flex:1;min-width:0}
+.cheat-row .cw{flex:1;min-width:0}
 .cheat-row b{white-space:nowrap}
 .kv{display:flex;flex-direction:column;padding:4px 14px}
 .kv>div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;font-size:14px}
@@ -432,7 +437,8 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
   .head-row{flex-direction:column;align-items:stretch}
   .head-tools{justify-content:flex-start}
   .tcard,.cycle,.j-form{padding:18px}
-  .tcard-h .recipe{min-width:0;flex-basis:100%;order:3}
+  .tcard-h{flex-wrap:wrap}
+  .tcard-h .ic{--s:48px!important}
   .lim{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;column-gap:10px}
   .lim .k{grid-column:1/-1}
   .lim .v{font-size:19px}

@@ -351,14 +351,14 @@ function statusPill(margin, profit, target) {
 }
 
 // ---------- общие элементы ----------
-function icon(id, size = 42) {
+function icon(id, size = 42, tier = true) {
   const p = parseId(id); if (!p) return "";
   // своя копия иконки из images/items; если её нет — официальный сервер иконок; если и его нет — нарисованная заглушка
   const local = `images/items/${id.replace("@", "_")}.webp`;
   const remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
   return `<span class="ic t${p.t}" style="--s:${size}px"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${FAM_ICON[p.f]}"/></svg>`
     + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`
-    + `<span class="tier">T${p.t}${p.e ? `<sup>.${p.e}</sup>` : ""}</span></span>`;
+    + (tier ? `<span class="tier">T${p.t}${p.e ? `<sup>.${p.e}</sup>` : ""}</span>` : "") + `</span>`;
 }
 const cityHtml = (c) => c ? `<span class="city" style="color:${CITY_COLOR[c]}">${esc(c)}</span>` : "";
 function srcAge(o) {
@@ -794,20 +794,20 @@ function buildTiers() {
   for (const t of [...S.cTiers].sort((a, b) => b - a)) {
     const p = P[t], own = !!p.own && t > 4;
     const nm = { raw: itemLabel(rawId(f, t)), prev: itemLabel(matId(f, t - 1)), mat: itemLabel(matId(f, t)) };
-    const card = document.createElement("section"); card.className = `panel tcard t${t}`; card.setAttribute("aria-labelledby", `h-${t}`);
+    const card = document.createElement("section"); card.className = `panel tcard t${t}`; card.style.setProperty("--tc", `var(--t${t})`); card.setAttribute("aria-labelledby", `h-${t}`);
     card.innerHTML = `
-      <div class="tcard-h"><span class="big" id="h-${t}">T${t}</span><span class="recipe">${esc(nm.raw)} ×${N[t]} + ${esc(nm.prev)} → ${esc(nm.mat)}</span><span id="pill-${t}"></span></div>
+      <div class="tcard-h">${icon(matId(f, t), 56)}<div class="tc-title"><span class="big" id="h-${t}">T${t}</span><span class="recipe">${esc(nm.raw)} ×${N[t]} + ${esc(nm.prev)} → ${esc(nm.mat)}</span></div><span id="pill-${t}"></span></div>
       <div class="trio">
-        <div class="field"><div class="lblrow"><label for="raw-${t}">${esc(nm.raw)}, покупка</label></div>
+        <div class="field"><div class="lblrow"><label class="lbl-ic" for="raw-${t}">${icon(rawId(f, t), 28, false)}${esc(nm.raw)}, покупка</label></div>
           <input type="number" id="raw-${t}" min="0" step="1" inputmode="numeric" value="${p.raw ?? ""}"><span class="srcnote" id="n-raw-${t}"></span></div>
-        <div class="field"><div class="lblrow"><label for="prev-${t}">${esc(nm.prev)}</label>
+        <div class="field"><div class="lblrow"><label class="lbl-ic" for="prev-${t}">${icon(matId(f, t - 1), 28, false)}${esc(nm.prev)}</label>
             <span class="seg" role="group" aria-label="Откуда материал T${t - 1}">
               <button type="button" id="mk-${t}" aria-pressed="${!own}">рынок</button>
               <button type="button" id="ow-${t}" aria-pressed="${own}" ${t === 4 ? 'disabled title="T3 считается только по рынку"' : ""}>свой крафт</button>
             </span></div>
           <input type="number" id="prev-${t}" min="0" step="1" inputmode="numeric" value="${p.prev ?? ""}" ${own ? "hidden" : ""}>
           <div class="owncost" id="ownc-${t}" ${own ? "" : "hidden"}></div><span class="srcnote" id="n-prev-${t}"></span></div>
-        <div class="field"><div class="lblrow"><label for="sell-${t}">${esc(nm.mat)}, продажа</label></div>
+        <div class="field"><div class="lblrow"><label class="lbl-ic" for="sell-${t}">${icon(matId(f, t), 28, false)}${esc(nm.mat)}, продажа</label></div>
           <input type="number" id="sell-${t}" min="0" step="1" inputmode="numeric" value="${p.sell ?? ""}"><span class="srcnote" id="n-sell-${t}"></span></div>
       </div>
       <div class="trio">
@@ -898,14 +898,14 @@ function renderCheat() {
   for (const t of [...S.cTiers].sort((a, b) => b - a)) {
     const st = calcState[t]; if (!st || !st.o) continue;
     const o = st.o, mr = o.maxRaw(c.m), mp = o.maxPrev(c.m);
-    rows.push({ t, what: `${itemLabel(rawId(f, t))} до`, v: mr > 0 ? fmt(mr) : "не выйдет", k: "b" });
-    if (!st.own) rows.push({ t, what: `${itemLabel(matId(f, t - 1))} до`, v: mp > 0 ? fmt(mp) : "не выйдет", k: "b" });
-    rows.push({ t, what: `${itemLabel(matId(f, t))} от`, v: fmt(o.minSell(c.m)), k: "s" });
+    rows.push({ t, id: rawId(f, t), what: `${itemLabel(rawId(f, t))} до`, v: mr > 0 ? fmt(mr) : "не выйдет", k: "b" });
+    if (!st.own) rows.push({ t, id: matId(f, t - 1), what: `${itemLabel(matId(f, t - 1))} до`, v: mp > 0 ? fmt(mp) : "не выйдет", k: "b" });
+    rows.push({ t, id: matId(f, t), what: `${itemLabel(matId(f, t))} от`, v: fmt(o.minSell(c.m)), k: "s" });
   }
   const box = $("c-cheat");
   let h = `<div class="w-head"><span class="w-title">Шпаргалка на сегодня</span><span class="k">${FAM[f].tab.toLowerCase()}, маржа ${nf0.format(c.m * 100)}%</span></div>`;
   if (!rows.length) h += `<p class="w-empty">Заполни цены в карточках или подставь их с рынка.</p>`;
-  else h += `<div>${rows.map((r) => `<div class="cheat-row t${r.t}"><i></i><span>${esc(r.what)}</span><b class="${r.k === "b" ? "neg" : "pos"}">${r.v}</b></div>`).join("")}</div>
+  else h += `<div>${rows.map((r) => `<div class="cheat-row">${icon(r.id, 30)}<span class="cw">${esc(r.what)}</span><b class="${r.k === "b" ? "neg" : "pos"}">${r.v}</b></div>`).join("")}</div>
     <button class="btn ghost" type="button" id="c-copy">Скопировать для чата</button>`;
   box.innerHTML = h;
   const d = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
