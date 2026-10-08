@@ -1,0 +1,37 @@
+# Скачивает иконки всех ресурсов из names.js с официального сервера иконок Albion
+# и кладёт их в images/items/, чтобы сайт показывал свои копии, а не тянул их с чужого сервера.
+# Запускается сам, когда меняется names.js или этот файл, и вручную: Actions → «Иконки предметов» → Run workflow.
+name: Иконки предметов
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [names.js, .github/workflows/icons.yml]
+permissions:
+  contents: write
+jobs:
+  icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Скачать недостающие иконки
+        run: |
+          mkdir -p images/items
+          ok=0; miss=0
+          for id in $(grep -oE '"T[0-9]_[A-Z]+(_LEVEL[0-9]@[0-9])?"' names.js | tr -d '"' | sort -u); do
+            f="images/items/${id//@/_}.png"
+            [ -s "$f" ] && continue
+            if curl -fsSL --retry 3 --retry-delay 2 "https://render.albiononline.com/v1/item/${id//@/%40}.png?size=128&quality=1" -o "$f"; then
+              ok=$((ok+1))
+            else
+              echo "Не скачалась: $id"; rm -f "$f"; miss=$((miss+1))
+            fi
+            sleep 0.2
+          done
+          echo "Скачано: $ok, не скачалось: $miss, всего в папке: $(ls images/items | wc -l)"
+      - name: Сохранить в репозиторий
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add images/items
+          if git diff --cached --quiet; then echo "Новых иконок нет"; else git commit -m "Иконки предметов" && git push; fi

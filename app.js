@@ -353,9 +353,11 @@ function statusPill(margin, profit, target) {
 // ---------- общие элементы ----------
 function icon(id, size = 42) {
   const p = parseId(id); if (!p) return "";
-  const px = size > 48 ? 128 : 64;
+  // своя копия иконки из images/items; если её нет — официальный сервер иконок; если и его нет — нарисованная заглушка
+  const local = `images/items/${id.replace("@", "_")}.png`;
+  const remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
   return `<span class="ic t${p.t}" style="--s:${size}px"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${FAM_ICON[p.f]}"/></svg>`
-    + `<img src="https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=${px}&amp;quality=1" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.remove()" onerror="this.remove()">`
+    + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`
     + `<span class="tier">T${p.t}${p.e ? `<sup>.${p.e}</sup>` : ""}</span></span>`;
 }
 const cityHtml = (c) => c ? `<span class="city" style="color:${CITY_COLOR[c]}">${esc(c)}</span>` : "";
