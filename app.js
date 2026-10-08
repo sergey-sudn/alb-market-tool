@@ -935,7 +935,7 @@ function renderBudgetOut() {
   let t = S.bTier;
   if (!t) { let bm = -Infinity; for (const k of S.cTiers) { const st = calcState[k]; if (st && st.o && st.o.margin > bm) { bm = st.o.margin; t = k; } } }
   const st = t && calcState[t];
-  if (!st || !st.o || !(B > 0)) { out.innerHTML = `<div><span>${!(B > 0) ? "Укажи бюджет" : "Заполни цены для этого тира"}</span><b></b></div>`; return; }
+  if (!st || !st.o || !(B > 0)) { out.innerHTML = `<div><span>${!(B > 0) ? "Укажи бюджет" : "Заполни цены для этого тира"}</span><b></b></div>`; if ($("b-hint")) $("b-hint").textContent = ""; return; }
   const set = N[t] * st.raw * c.bf + st.prevEff;
   const sets = B / (set + c.station / c.k), outputs = sets / c.k, profit = outputs * st.o.profit;
   const cls = profit >= 0 ? "pos" : "neg";
@@ -943,6 +943,8 @@ function renderBudgetOut() {
     + `<div><span>${esc(itemLabel(matId(f, t - 1)))}${st.own ? " (свой)" : ""}</span><b>${nf0.format(sets)} шт.</b></div>`
     + `<div><span>На выходе, с возвратом</span><b>~${nf0.format(outputs)} шт.</b></div>`
     + `<div><span>Прибыль, T${t}</span><b class="${cls}">~${fmtBig(profit)}</b></div>`;
+  const hint = $("b-hint") || (() => { const el = document.createElement("p"); el.id = "b-hint"; el.className = "k"; el.style.margin = "0"; out.after(el); return el; })();
+  hint.textContent = `С перекрафтом возврата: из ${nf0.format(sets)} закупленных крафтов выйдет ~${nf0.format(outputs)} шт. (×${nf2.format(1 / c.k)}). Вернувшиеся ресурсы снова идут в переработку, с них снова приходит возврат, и так до конца.`;
 }
 async function openCalc() {
   renderCalcControls(); buildTiers(); updateCalc();
@@ -1196,6 +1198,8 @@ function sumHint() {
   const rp = nf1.format((st.rrr === "custom" ? num(st.rrrc) || 0 : +st.rrr * 100));
   $("sumhint").textContent = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%${st.bonusFam ? `, бонус: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
   $("s-rrrc").hidden = st.rrr !== "custom";
+  const k = calcSettings().k;
+  $("s-rrr-hint").textContent = k > 0 && k < 1 ? `С перекрафтом возврата из сырья на 1000 крафтов выйдет ~${nf0.format(1000 / k)} шт. (+${nf0.format((1 / k - 1) * 100)}%): вернувшиеся ресурсы снова идут в переработку, и так до конца.` : "";
 }
 function rerenderAll() {
   sumHint();
