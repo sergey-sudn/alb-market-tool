@@ -959,12 +959,13 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const cycleName = (cy) => itemLabel(matId(cy.f, cy.t, cy.e));
 const dShort = (ts) => new Date(ts).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 function cycleStats(cy) {
-  let spent = 0, rawQ = 0, prevQ = 0, rawSum = 0, prevSum = 0, made = 0, station = 0, sold = 0, revenue = 0, gross = 0;
+  let rawEnch = false, spent = 0, rawQ = 0, prevQ = 0, rawSum = 0, prevSum = 0, made = 0, station = 0, sold = 0, revenue = 0, gross = 0;
   const sells = [];
   for (const e of cy.entries) {
     if (e.type === "buy") {
       const v = e.qty * e.price * (e.order ? 1.025 : 1); spent += v;
-      if (e.what === "prev") { prevQ += e.qty; prevSum += e.qty * e.price; } else { rawQ += e.qty; rawSum += e.qty * e.price; }
+      if (e.what === "prev") { prevQ += e.qty; prevSum += e.qty * e.price; }
+      else { const m = e.rawE ? (e.mult || calcSettings(cy.f).mult[e.rawE - 1] || 1) : 1; rawQ += e.qty * m; rawSum += e.qty * e.price; if (e.rawE) rawEnch = true; }
     } else if (e.type === "refine") { made += e.qty; station += e.station || 0; }
     else if (e.type === "sell") { sold += e.qty; gross += e.qty * e.price; revenue += e.qty * e.price * (1 - e.fee); sells.push(e); }
   }
@@ -972,7 +973,7 @@ function cycleStats(cy) {
   const profit = sold > 0 && made > 0 ? revenue - sold * unitCost : cy.closed ? revenue - spent - station : NaN;
   const ts = cy.entries.map((e) => e.ts);
   return {
-    spent, rawQ, prevQ, avgRaw: rawQ ? rawSum / rawQ : NaN, avgPrev: prevQ ? prevSum / prevQ : NaN, made, station, sold, revenue,
+    spent, rawQ, rawEnch, prevQ, avgRaw: rawQ ? rawSum / rawQ : NaN, avgPrev: prevQ ? prevSum / prevQ : NaN, made, station, sold, revenue,
     avgSell: sold ? gross / sold : NaN, unitCost, profit, sells, pct: made > 0 ? Math.min(1, sold / made) : 0,
     margin: sold > 0 && made > 0 ? (revenue / sold - unitCost) / unitCost : NaN,
     from: ts.length ? Math.min(...ts) : cy.created, to: ts.length ? Math.max(...ts) : cy.created,
@@ -1033,9 +1034,9 @@ function renderCycles() {
     const loss = isFinite(s.profit) && s.profit < 0;
     const fcProfit = cy.fc && isFinite(cy.fc.profit) && s.made > 0 ? cy.fc.profit * s.made : NaN;
     const dates = s.from === s.to ? dShort(s.from) : `${dShort(s.from)} – ${dShort(s.to)}`;
-    const bought = [s.rawQ ? `${lc1(itemLabel(rawId(cy.f, cy.t, cy.e)))} ${nf0.format(s.rawQ)} × ${fmt(s.avgRaw)}` : "", s.prevQ ? `${lc1(itemLabel(matId(cy.f, cy.t - 1, cy.e)))} ${nf0.format(s.prevQ)} × ${fmt(s.avgPrev)}` : ""].filter(Boolean).join(", ");
+    const bought = [s.rawQ ? `${lc1(itemLabel(rawId(cy.f, cy.t, cy.e)))} ${nf0.format(s.rawQ)} × ${fmt(s.avgRaw)}${s.rawEnch ? " в пересчёте на обычный" : ""}` : "", s.prevQ ? `${lc1(itemLabel(matId(cy.f, cy.t - 1, cy.e)))} ${nf0.format(s.prevQ)} × ${fmt(s.avgPrev)}` : ""].filter(Boolean).join(", ");
     const entries = [...cy.entries].sort((a, b) => b.ts - a.ts).map((e) => {
-      const what = e.type === "buy" ? itemLabel(e.what === "prev" ? matId(cy.f, cy.t - 1, cy.e) : rawId(cy.f, cy.t, cy.e)) : e.type === "refine" ? "получено" : itemLabel(id);
+      const what = e.type === "buy" ? itemLabel(e.what === "prev" ? matId(cy.f, cy.t - 1, cy.e) : rawId(cy.f, cy.t, e.rawE || cy.e)) : e.type === "refine" ? "получено" : itemLabel(id);
       const val = e.type === "refine" ? `${nf0.format(e.qty)} шт.${e.station ? `, станция ${fmt(e.station)}` : ""}` : `${nf0.format(e.qty)} × ${fmt(e.price)}${e.city ? ", " + e.city : ""}`;
       return `<li><span>${new Date(e.ts).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</span><span class="e-what">${TYPE_RU[e.type]}: ${esc(lc1(what))}, ${val}</span><button type="button" data-del="${e.id}" aria-label="Удалить запись">✕</button></li>`;
     }).join("");
@@ -1085,16 +1086,20 @@ function renderJForm() {
   let h = `<span class="w-title">Новая запись</span>
     <div class="seg" role="group" aria-label="Что сделал">${[["buy", "Купил"], ["refine", "Переработал"], ["sell", "Продал"]].map(([v, l]) => `<button type="button" data-type="${v}" aria-pressed="${jf.type === v}">${l}</button>`).join("")}</div>
     <label class="field"><span class="k">Цикл</span><select id="jf-cycle">${open.map((c) => opt(c.id, `${cycleName(c)}, с ${dShort(cycleStats(c).from)}`, jf.cycle === c.id)).join("")}${opt("new", "Новый цикл…", tg.cy === null)}</select></label>`;
-  if (!tg.cy) h += `<div class="row3">
+  const stone = !!FAM[tg.f].stone;
+  if (!tg.cy) h += `<div class="${stone ? "row2" : "row3"}">
       <label class="field"><span class="k">Ресурс</span><select id="jf-f">${FAMS.map((f) => opt(f, FAM[f].tab, f === tg.f)).join("")}</select></label>
       <label class="field"><span class="k">Тир</span><select id="jf-t">${REFINE_TIERS.map((t) => opt(t, "T" + t, t === tg.t)).join("")}</select></label>
-      <label class="field"><span class="k">Зачар.</span><select id="jf-e" ${FAM[tg.f].stone ? "disabled" : ""}>${[0, 1, 2, 3].map((e) => opt(e, "." + e, e === tg.e)).join("")}</select></label>
-    </div><span class="k">Цикл — это ${esc(lc1(matN))}: закупка, переработка и продажа одной партии.</span>`;
+      ${stone ? "" : `<label class="field"><span class="k">Зачар.</span><select id="jf-e">${[0, 1, 2, 3].map((e) => opt(e, "." + e, e === tg.e)).join("")}</select></label>`}
+    </div><span class="k">Цикл — это ${esc(lc1(matN))}: закупка, переработка и продажа одной партии.${stone ? " Блоки бывают только без зачарования, а зачарованный камень выбирается в «Что купил»." : ""}</span>`;
+  const rawK = stone && /^raw[123]$/.test(jf.what) ? +jf.what[3] : 0;
   if (jf.type === "buy") {
-    h += `<label class="field"><span class="k">Что купил</span><select id="jf-what">${opt("raw", rawN, jf.what !== "prev")}${opt("prev", prevN, jf.what === "prev")}</select></label>`;
+    const raws = stone ? [0, 1, 2, 3].map((k) => opt(k ? "raw" + k : "raw", itemLabel(rawId(tg.f, tg.t, k)) + (k ? ` (.${k}, ×${nf1.format(calcSettings(tg.f).mult[k - 1])} блоков)` : ""), k ? jf.what === "raw" + k : !rawK && jf.what !== "prev")).join("")
+      : opt("raw", rawN, jf.what !== "prev");
+    h += `<label class="field"><span class="k">Что купил</span><select id="jf-what">${raws}${opt("prev", prevN, jf.what === "prev")}</select></label>`;
   }
   if (jf.type !== "refine") {
-    const mk = jf.type === "sell" ? pickSell(matId(tg.f, tg.t, tg.e)) : jf.what === "prev" ? pickBuy(matId(tg.f, tg.t - 1, tg.e)) : pickBuy(rawId(tg.f, tg.t, tg.e));
+    const mk = jf.type === "sell" ? pickSell(matId(tg.f, tg.t, tg.e)) : jf.what === "prev" ? pickBuy(matId(tg.f, tg.t - 1, tg.e)) : pickBuy(rawId(tg.f, tg.t, rawK || tg.e));
     h += `<div class="row2">
       <label class="field"><span class="k">Сколько, шт.</span><input type="number" id="jf-qty" min="1" step="1" inputmode="numeric"></label>
       <label class="field"><span class="k">Цена за 1</span><input type="number" id="jf-price" min="0" step="1" inputmode="numeric" placeholder="${mk ? "рынок ~" + Math.round(mk.price) : ""}"></label>
@@ -1145,7 +1150,10 @@ async function addEntry(tg) {
     if (!(p > 0)) { const ph = /(\d+)/.exec($("jf-price").placeholder || ""); if (ph) p = +ph[1]; }
     if (!(p > 0)) { toast("Укажи цену за 1"); $("jf-price").focus(); return; }
     e.price = p; e.city = $("jf-city").value;
-    if (jf.type === "buy") { e.what = jf.what === "prev" ? "prev" : "raw"; e.order = !!jf.order; }
+    if (jf.type === "buy") {
+      e.what = jf.what === "prev" ? "prev" : "raw"; e.order = !!jf.order;
+      if (FAM[tg.f].stone && /^raw[123]$/.test(jf.what)) { e.rawE = +jf.what[3]; e.mult = calcSettings(tg.f).mult[e.rawE - 1]; }
+    }
     else e.fee = +jf.fee;
   }
   let cy = tg.cy;
