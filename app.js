@@ -354,7 +354,7 @@ function statusPill(margin, profit, target) {
 function icon(id, size = 42) {
   const p = parseId(id); if (!p) return "";
   // своя копия иконки из images/items; если её нет — официальный сервер иконок; если и его нет — нарисованная заглушка
-  const local = `images/items/${id.replace("@", "_")}.png`;
+  const local = `images/items/${id.replace("@", "_")}.webp`;
   const remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
   return `<span class="ic t${p.t}" style="--s:${size}px"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${FAM_ICON[p.f]}"/></svg>`
     + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`

@@ -16,18 +16,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Скачать недостающие иконки
         run: |
-          mkdir -p images/items
+          pip install --quiet pillow
+          mkdir -p images/items /tmp/png
           ok=0; miss=0
           for id in $(grep -oE '"T[0-9]_[A-Z]+(_LEVEL[0-9]@[0-9])?"' names.js | tr -d '"' | sort -u); do
-            f="images/items/${id//@/_}.png"
-            [ -s "$f" ] && continue
-            if curl -fsSL --retry 3 --retry-delay 2 "https://render.albiononline.com/v1/item/${id//@/%40}.png?size=128&quality=1" -o "$f"; then
+            name="${id//@/_}"
+            [ -s "images/items/$name.webp" ] && continue
+            if curl -fsSL --retry 3 --retry-delay 2 "https://render.albiononline.com/v1/item/${id//@/%40}.png?size=128&quality=1" -o "/tmp/png/$name.png"; then
               ok=$((ok+1))
             else
-              echo "Не скачалась: $id"; rm -f "$f"; miss=$((miss+1))
+              echo "Не скачалась: $id"; miss=$((miss+1))
             fi
             sleep 0.2
           done
+          # PNG по 30 КБ → WebP по 5 КБ: страница грузится быстрее
+          python3 -c "
+          import glob, os
+          from PIL import Image
+          for f in glob.glob('/tmp/png/*.png'):
+              Image.open(f).convert('RGBA').save('images/items/' + os.path.basename(f)[:-4] + '.webp', 'WEBP', quality=85, method=6)
+          "
           echo "Скачано: $ok, не скачалось: $miss, всего в папке: $(ls images/items | wc -l)"
       - name: Сохранить в репозиторий
         run: |
