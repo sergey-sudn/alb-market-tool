@@ -240,7 +240,7 @@ function histStats(id, city) {
   const full = pts.length > 3 ? pts.slice(0, -1) : pts; // последний день обычно неполный
   const vol = full.reduce((s, d) => s + d.c, 0) / full.length;
   const pct = (q) => { const s = [...pts].sort((a, b) => a.p - b.p); const tot = s.reduce((a, d) => a + d.c, 0); let acc = 0; for (const d of s) { acc += d.c; if (acc >= tot * q) return d.p; } return s[s.length - 1].p; };
-  return { med: pct(0.5), p80: pct(0.8), vol };
+  return { med: pct(0.5), p20: pct(0.2), p80: pct(0.8), vol };
 }
 function liveOf(id, city, side) {
   const rec = cur[`${S.settings.server}|${id}`]; const r = rec && rec.cities[city];
@@ -257,9 +257,12 @@ function buyIn(id, city) {
   const fresh = live && live.age <= maxAge() ? live : null;
   if (mode === "live") return fresh ? { price: fresh.p, city, src: "live", age: fresh.age } : null;
   if (mode === "hist") return hs && hs.vol >= MIN_VOL ? { price: hs.med, city, src: "hist" } : null;
+  // лот заметно дешевле обычного — скорее всего, по такой цене лежит лишь несколько штук; считаем по P20 за неделю
+  if (fresh && hs && hs.vol >= MIN_VOL && fresh.p < hs.med * LOW_LOT) return { price: Math.max(fresh.p, hs.p20), city, src: "low", age: fresh.age, live: fresh.p, med: hs.med };
   if (fresh) return { price: fresh.p, city, src: "live", age: fresh.age };
   return hs && hs.vol >= MIN_VOL ? { price: hs.med, city, src: "hist" } : null;
 }
+const LOW_LOT = 0.7;
 // За сколько можно продать 1 шт. своим лотом в городе
 function sellIn(id, city) {
   const live = liveOf(id, city, "sell"), hs = histStats(id, city), mode = S.settings.mode;
@@ -368,6 +371,7 @@ function srcAge(o) {
   if (!o) return "";
   if (o.src === "hist") return "медиана 7 д";
   if (o.src === "cap") return "P80";
+  if (o.src === "low") return `${fmtAge(o.age)} · дёшево?`;
   return o.age !== undefined ? fmtAge(o.age) : "";
 }
 function chips(el, items, isOn, onClick, cls) {
@@ -676,12 +680,23 @@ function renderRefineControls() {
   const cnt = (S.rFams.length !== FAMS.length) + (S.rTiers.length !== REFINE_TIERS.length) + (S.rEnch !== 0) + (S.rOnlyPlus ? 1 : 0);
   $("r-fcount").textContent = cnt || "";
 }
-const recipeText = (r) => `${itemLabel(rawId(r.f, r.t, r.e))} ×${N[r.t]} + ${itemLabel(matId(r.f, r.t - 1, r.e))}`;
-function rawUnitText(r) { return r.raw && FAM[r.f].stone && r.raw.ench ? `бери T${r.t}.${r.raw.ench} по ${fmt(r.raw.unit)}` : ""; }
-function whereCell(o, extra = "") {
+// у зачарованного камня камня в рецепте столько же, а блоков тира ниже и блоков на выходе — в 2/4/8 раз больше
+const stoneK = (r) => (r.raw && FAM[r.f].stone ? r.raw.ench || 0 : 0);
+const stoneMult = (r) => { const k = stoneK(r); return k ? calcSettings(r.f).mult[k - 1] : 1; };
+function recipeText(r) {
+  const k = stoneK(r), m = stoneMult(r);
+  if (!k) return `${itemLabel(rawId(r.f, r.t, r.e))} ×${N[r.t]} + ${itemLabel(matId(r.f, r.t - 1, r.e))}`;
+  return `${itemLabel(rawId(r.f, r.t, k))} ×${N[r.t]} + ${itemLabel(matId(r.f, r.t - 1))} ×${nf1.format(m)} → ${nf1.format(m)} шт.`;
+}
+function rawUnitText(r) { return stoneK(r) ? `${lc1(itemLabel(rawId(r.f, r.t, stoneK(r))))}, на обычный ${fmt(r.raw.price)}` : ""; }
+function lowNote(o, id) {
+  return o && o.src === "low" ? `Лот ${lc1(itemLabel(id))} в ${o.city} (${fmt(o.live)}) заметно дешевле обычной цены там (${fmt(o.med)}). Возможно, по такой цене выставлено мало, поэтому в расчёте взято ${fmt(o.price)}.` : "";
+}
+function whereCell(o, extra = "", price, lowId) {
   if (!o) return `<td><span class="empty">нет цены</span></td>`;
-  const tag = o.src === "hist" ? `<span class="tag" title="Свежего лота нет, взята медиана за 7 дней">история</span>` : o.src === "cap" ? `<span class="tag" title="Лот дороже обычного, взят P80 за 7 дней">P80</span>` : "";
-  return `<td><span class="v">${fmt(o.price)}</span>${tag}<div class="where">${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : ""}</span></div>${extra ? `<small>${extra}</small>` : ""}</td>`;
+  const tag = o.src === "hist" ? `<span class="tag" title="Свежего лота нет, взята медиана за 7 дней">история</span>` : o.src === "cap" ? `<span class="tag" title="Лот дороже обычного, взят P80 за 7 дней">P80</span>`
+    : o.src === "low" ? `<span class="tag" title="${esc(lowNote(o, lowId || ""))}">дёшево?</span>` : "";
+  return `<td><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : ""}</span></div>${extra ? `<small>${extra}</small>` : ""}</td>`;
 }
 function liqHtml(vol) {
   const l = liquidity(vol);
@@ -707,11 +722,11 @@ function renderRefineWidgets(all) {
     <div class="w-head"><span class="k">Лучшее прямо сейчас</span><span class="k">по марже${c.bonus ? ", с бонусом дня" : ""}</span></div>
     <div class="b-head">${icon(b.id, 64)}<div class="b-txt"><div class="b-title">${esc(itemLabel(b.id))}</div><div class="b-recipe">${esc(recipeText(b))}</div></div><div class="b-pct">${nf0.format(b.margin * 100)}%</div></div>
     <div class="b-list inset">
-      ${line(`Купи ${esc(lc1(rawName))}`, b.raw, fmt(b.raw.unit))}
-      ${line(`Купи ${esc(lc1(itemLabel(matId(b.f, b.t - 1, b.e))))}`, b.prev, fmt(b.prev.price))}
+      ${line(`Купи ${esc(lc1(rawName))}, ${N[b.t]} на крафт`, b.raw, fmt(b.raw.unit))}
+      ${line(`Купи ${esc(lc1(itemLabel(matId(b.f, b.t - 1, b.e))))}, ${nf1.format(stoneMult(b))} на крафт`, b.prev, fmt(b.prev.price))}
       ${line(`Продай ${esc(lc1(itemLabel(b.id)))}`, b.sell, fmt(b.sell.price))}
       <div class="b-line"><span class="b-lbl">Прибыль за стак 999</span><span class="b-where"><span class="liq ${liq.cls}" title="${esc(liq.txt)}">${isFinite(b.sell.vol) ? "продаётся " + nf0.format(b.sell.vol) + " в день" : "объём продаж неизвестен"}</span></span><b class="b-val pos">${fmtBig(b.profit * STACK)}</b></div>
-    </div></div>`;
+    </div>${[lowNote(b.raw, rawId(b.f, b.t, stoneK(b) || b.e)), lowNote(b.prev, matId(b.f, b.t - 1, b.e))].filter(Boolean).map((t) => `<p class="k" style="margin:0;color:var(--warn)">Осторожно: ${esc(t)}</p>`).join("")}</div>`;
   const list = (title, rows, val, sub) => `<div class="panel widget"><span class="k">${title}</span><div class="tl">${rows.slice(0, 3).map((r) =>
     `<button type="button" class="tl-row" data-f="${r.f}" data-t="${r.t}">${icon(r.id, 38)}<span class="tl-name">${esc(itemLabel(r.id))}</span><span class="tl-v"><b class="pos">${val(r)}</b><span class="age">${sub(r)}</span></span></button>`).join("")}</div></div>`;
   h += list("Лучшие по марже", byMargin, (r) => nf0.format(r.margin * 100) + "%", (r) => fmtBig(r.profit * STACK));
@@ -737,10 +752,10 @@ function renderRefine() {
   for (const r of rows) {
     const name = esc(itemLabel(r.id)), recipe = esc(recipeText(r));
     h += `<tr tabindex="0" data-f="${r.f}" data-t="${r.t}"><td><div class="item">${icon(r.id, 42)}<div class="iname"><b>${name}${r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : ""}</b><small>${recipe}</small></div></div></td>`;
-    h += whereCell(r.raw, rawUnitText(r)) + whereCell(r.prev) + whereCell(r.sell, r.sell ? liqHtml(r.sell.vol) : "");
+    h += whereCell(r.raw, rawUnitText(r), r.raw && r.raw.unit, rawId(r.f, r.t, stoneK(r) || r.e)) + whereCell(r.prev, "", undefined, matId(r.f, r.t - 1, r.e)) + whereCell(r.sell, r.sell ? liqHtml(r.sell.vol) : "");
     const ser = r.sell ? series7(r.id, r.sell.city) : null;
     h += `<td>${ser ? spark(ser.vals) : `<span class="empty">—</span>`}</td>`;
-    const ln = (k, o, extra = "") => `<div class="m-line"><span class="k">${k}</span>${o ? cityHtml(o.city) + `<span class="age">${srcAge(o)}</span><b>${fmt(o.price)}</b>` : `<b class="empty">нет цены</b>`}</div>${extra}`;
+    const ln = (k, o, extra = "", price) => `<div class="m-line"><span class="k">${k}</span>${o ? cityHtml(o.city) + `<span class="age">${srcAge(o)}</span><b>${fmt(price ?? o.price)}</b>` : `<b class="empty">нет цены</b>`}</div>${extra}`;
     m += `<section class="panel card" tabindex="0" data-f="${r.f}" data-t="${r.t}"><div class="card-h">${icon(r.id, 42)}<div class="iname"><b>${name}</b><small>${recipe}</small></div>`;
     if (!r.ok) {
       h += `<td colspan="4"><span class="empty">не хватает цен</span></td></tr>`;
@@ -751,7 +766,7 @@ function renderRefine() {
     h += `<td><b class="${cls}">${fmtSigned(r.profit)}</b><small>себест. ${fmt(r.cost)}</small></td>${`<td>${marginBar(r, c0.m)}</td>`}`
       + `<td><b class="${cls}">${fmtBig(r.profit * STACK)}</b><small>вложить ${fmtBig(r.capital, false)}</small></td></tr>`;
     m += `<b style="color:${col};font-size:18px">${nf0.format(r.margin * 100)}%</b></div>`
-      + ln("Сырьё", r.raw, rawUnitText(r) ? `<div class="sm" style="text-align:right">${rawUnitText(r)}</div>` : "") + ln("Тир ниже", r.prev) + ln("Продажа", r.sell)
+      + ln("Сырьё", r.raw, rawUnitText(r) ? `<div class="sm" style="text-align:right">${rawUnitText(r)}</div>` : "", r.raw.unit) + ln("Тир ниже", r.prev) + ln("Продажа", r.sell)
       + `<div class="m-line"><span class="k">Продажи</span>${liqHtml(r.sell.vol)}</div>`
       + `<div class="m-line"><span class="k">За 1 шт. / за стак</span><b class="${cls}">${fmtSigned(r.profit)}</b><b class="${cls}" style="min-width:84px">${fmtBig(r.profit * STACK)}</b></div></section>`;
   }
