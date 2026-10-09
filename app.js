@@ -251,8 +251,18 @@ function liveOf(id, city, side) {
 }
 function activeCities() { return CITIES.filter((c) => (c !== "Caerleon" || S.settings.caerleon) && (c !== "Brecilien" || S.settings.brecilien)); }
 const maxAge = () => num(S.settings.age) || 24;
-// Сколько стоит купить 1 шт. в городе
+// Сколько стоит купить 1 шт. в городе. Своим ордером — лучший ордер на закупку +1 и комиссия 2,5%;
+// если ордеров нет — по самому дешёвому лоту, без комиссии
+const ORDER_FEE = 1.025;
 function buyIn(id, city) {
+  if (S.settings.order && S.settings.mode !== "hist") {
+    const b = liveOf(id, city, "buy");
+    if (b && b.age <= maxAge()) { const hs = histStats(id, city); return { price: b.p + 1, city, src: "order", age: b.age, vol: hs ? hs.vol : NaN, fee: ORDER_FEE }; }
+  }
+  const o = lotIn(id, city);
+  return o && { ...o, fee: 1 };
+}
+function lotIn(id, city) {
   const live = liveOf(id, city, "sell"), hs = histStats(id, city), mode = S.settings.mode;
   const fresh = live && live.age <= maxAge() ? live : null;
   if (mode === "live") return fresh ? { price: fresh.p, city, src: "live", age: fresh.age } : null;
@@ -275,9 +285,10 @@ function sellIn(id, city) {
   if (fresh) return { price: fresh.p, city, src: "live", age: fresh.age, vol };
   return hs ? { price: hs.p80, city, src: "hist", vol } : null;
 }
+// сравниваем с учётом комиссии ордера; o.paid — сколько реально уходит серебра за 1 шт.
 function pickBuy(id) {
   let best = null;
-  for (const c of activeCities()) { const o = buyIn(id, c); if (o && (!best || o.price < best.price)) best = o; }
+  for (const c of activeCities()) { const o = buyIn(id, c); if (o) o.paid = o.price * o.fee; if (o && (!best || o.paid < best.paid)) best = o; }
   return best;
 }
 function pickSell(id) {
@@ -289,11 +300,12 @@ function pickSell(id) {
 function pickRaw(f, t, e) {
   const cs = calcSettings(f);
   if (!FAM[f].stone) { const o = pickBuy(rawId(f, t, e)); return o && { ...o, ench: e, unit: o.price }; }
+  // у камня: обычный или зачарованный — что выйдет дешевле в пересчёте на обычный
   let best = null;
   for (let k = 0; k <= (t >= 4 ? 3 : 0); k++) {
     const o = pickBuy(rawId(f, t, k)); if (!o) continue;
-    const eff = o.price / (k ? cs.mult[k - 1] : 1);
-    if (!best || eff < best.price) best = { ...o, price: eff, unit: o.price, ench: k };
+    const m = k ? cs.mult[k - 1] : 1, eff = o.price / m;
+    if (!best || o.paid / m < best.paid) best = { ...o, price: eff, paid: o.paid / m, unit: o.price, ench: k };
   }
   return best;
 }
@@ -372,6 +384,7 @@ function srcAge(o) {
   if (o.src === "hist") return "медиана 7 д";
   if (o.src === "cap") return "P80";
   if (o.src === "low") return `${fmtAge(o.age)} · дёшево?`;
+  if (o.src === "order") return `ордер · ${fmtAge(o.age)}`;
   return o.age !== undefined ? fmtAge(o.age) : "";
 }
 function chips(el, items, isOn, onClick, cls) {
@@ -649,7 +662,7 @@ function refineAll() {
     const c = calcSettings(f);
     const raw = pickRaw(f, t, e), prev = pickBuy(matId(f, t - 1, e)), sell = pickSell(matId(f, t, e));
     const row = { f, t, e, c, raw, prev, sell, ok: !!(raw && prev && sell), id: matId(f, t, e) };
-    if (row.ok) Object.assign(row, economics(t, raw.price, prev.price * c.bf, sell.price, c));
+    if (row.ok) Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }));
     rows.push(row);
   }
   return rows;
@@ -695,7 +708,9 @@ function lowNote(o, id) {
 function whereCell(o, extra = "", price, lowId) {
   if (!o) return `<td><span class="empty">нет цены</span></td>`;
   const tag = o.src === "hist" ? `<span class="tag" title="Свежего лота нет, взята медиана за 7 дней">история</span>` : o.src === "cap" ? `<span class="tag" title="Лот дороже обычного, взят P80 за 7 дней">P80</span>`
-    : o.src === "low" ? `<span class="tag" title="${esc(lowNote(o, lowId || ""))}">дёшево?</span>` : "";
+    : o.src === "low" ? `<span class="tag" title="${esc(lowNote(o, lowId || ""))}">дёшево?</span>`
+    : o.src === "order" ? `<span class="tag ord" title="Цена своего ордера на закупку: лучший ордер в городе +1, плюс 2,5% комиссии. Ордер исполняется не сразу">ордер</span>` : "";
+  if (o.src === "order" && !extra) extra = isFinite(o.vol) ? `продаётся ~${nf0.format(o.vol)} в день` : "объём продаж неизвестен";
   return `<td><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : ""}</span></div>${extra ? `<small>${extra}</small>` : ""}</td>`;
 }
 function liqHtml(vol) {
@@ -722,8 +737,8 @@ function renderRefineWidgets(all) {
     <div class="w-head"><span class="k">Лучшее прямо сейчас</span><span class="k">по марже${c.bonus ? ", с бонусом дня" : ""}</span></div>
     <div class="b-head">${icon(b.id, 64)}<div class="b-txt"><div class="b-title">${esc(itemLabel(b.id))}</div><div class="b-recipe">${esc(recipeText(b))}</div></div><div class="b-pct">${nf0.format(b.margin * 100)}%</div></div>
     <div class="b-list inset">
-      ${line(`Купи ${esc(lc1(rawName))}, ${N[b.t]} на крафт`, b.raw, fmt(b.raw.unit))}
-      ${line(`Купи ${esc(lc1(itemLabel(matId(b.f, b.t - 1, b.e))))}, ${nf1.format(stoneMult(b))} на крафт`, b.prev, fmt(b.prev.price))}
+      ${line(`${b.raw.src === "order" ? "Ордер на" : "Купи"} ${esc(lc1(rawName))}, ${N[b.t]} на крафт`, b.raw, fmt(b.raw.unit))}
+      ${line(`${b.prev.src === "order" ? "Ордер на" : "Купи"} ${esc(lc1(itemLabel(matId(b.f, b.t - 1, b.e))))}, ${nf1.format(stoneMult(b))} на крафт`, b.prev, fmt(b.prev.price))}
       ${line(`Продай ${esc(lc1(itemLabel(b.id)))}`, b.sell, fmt(b.sell.price))}
       <div class="b-line"><span class="b-lbl">Прибыль за стак 999</span><span class="b-where"><span class="liq ${liq.cls}" title="${esc(liq.txt)}">${isFinite(b.sell.vol) ? "продаётся " + nf0.format(b.sell.vol) + " в день" : "объём продаж неизвестен"}</span></span><b class="b-val pos">${fmtBig(b.profit * STACK)}</b></div>
     </div>${[lowNote(b.raw, rawId(b.f, b.t, stoneK(b) || b.e)), lowNote(b.prev, matId(b.f, b.t - 1, b.e))].filter(Boolean).map((t) => `<p class="k" style="margin:0;color:var(--warn)">Осторожно: ${esc(t)}</p>`).join("")}</div>`;
@@ -1197,7 +1212,7 @@ async function addEntry(tg) {
     await ensure(ids, { history: true });
     const c = calcSettings(tg.f), raw = pickRaw(tg.f, tg.t, tg.e), prev = pickBuy(matId(tg.f, tg.t - 1, tg.e)), sell = pickSell(matId(tg.f, tg.t, tg.e));
     if (raw && prev && sell) {
-      const o = economics(tg.t, raw.price, prev.price * c.bf, sell.price, c);
+      const o = economics(tg.t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 });
       cy.fc = { raw: raw.price, prev: prev.price, sell: sell.price, profit: o.profit, margin: o.margin };
     }
   }
@@ -1235,7 +1250,7 @@ function setTheme(t) {
 function sumHint() {
   const c = calcSettings(), st = S.settings;
   const rp = nf1.format((st.rrr === "custom" ? num(st.rrrc) || 0 : +st.rrr * 100));
-  $("sumhint").textContent = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%${st.bonusFam ? `, бонус: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
+  $("sumhint").textContent = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%, закупка ${st.order ? "ордером" : "сразу"}${st.bonusFam ? `, бонус: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
   $("s-rrrc").hidden = st.rrr !== "custom";
   const k = calcSettings().k;
   $("s-rrr-hint").textContent = k > 0 && k < 1 ? `С перекрафтом возврата из сырья на 1000 крафтов выйдет ~${nf0.format(1000 / k)} шт. (+${nf0.format((1 / k - 1) * 100)}%): вернувшиеся ресурсы снова идут в переработку, и так до конца.` : "";
@@ -1253,14 +1268,14 @@ function bindSettings() {
   $("s-server").value = st.server; $("s-caerleon").checked = !!st.caerleon; $("s-brecilien").checked = !!st.brecilien;
   $("s-mode").value = st.mode; $("s-age").value = st.age;
   $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-station").value = st.station;
-  $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-order").checked = !!st.order;
+  $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-buy").value = st.order ? "order" : "now";
   $("s-bfam").value = st.bonusFam || ""; $("s-bpct").value = String(st.bonusPct || 10);
   ["s-m1", "s-m2", "s-m3"].forEach((id, i) => ($(id).value = st.m[i]));
   const on = (id, fn, ev = "input") => $(id).addEventListener(ev, (e) => { fn(e.target); save(); rerenderAll(); });
   on("s-rrr", (el) => (st.rrr = el.value), "change"); on("s-rrrc", (el) => (st.rrrc = el.value));
   on("s-fee", (el) => (st.fee = el.value), "change"); on("s-station", (el) => (st.station = el.value));
   on("s-margin", (el) => (st.margin = el.value)); on("s-buffer", (el) => (st.buffer = el.value));
-  on("s-order", (el) => (st.order = el.checked), "change"); on("s-age", (el) => (st.age = el.value));
+  on("s-buy", (el) => (st.order = el.value === "order"), "change"); on("s-age", (el) => (st.age = el.value));
   on("s-mode", (el) => (st.mode = el.value), "change");
   on("s-bfam", (el) => (st.bonusFam = el.value), "change"); on("s-bpct", (el) => (st.bonusPct = +el.value), "change");
   on("s-caerleon", (el) => (st.caerleon = el.checked), "change"); on("s-brecilien", (el) => (st.brecilien = el.checked), "change");

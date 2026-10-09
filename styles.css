@@ -241,6 +241,7 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
 .mbar{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .mbar i{display:block;height:100%;border-radius:3px}
 .mval{font-weight:700;min-width:44px;text-align:right}
+.tag.ord{background:var(--accent-soft);color:var(--ink-2)}
 .liq{display:inline-flex;align-items:center;gap:6px}
 .liq::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--lc,var(--muted))}
 .liq.l1{--lc:var(--good)} .liq.l2{--lc:var(--warn)} .liq.l3{--lc:var(--bad)}
