@@ -70,14 +70,14 @@ const S = {
   settings: { ...DEF, m: [...DEF.m] },
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pItem: null,
-  rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnch: 0, rOnlyPlus: false, rSort: "margin",
+  rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin",
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnch", "rOnlyPlus", "rSort", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -86,6 +86,7 @@ try {
     if (saved.jf) S.jf = { ...S.jf, ...saved.jf };
     if (saved.pFam && !saved.pFams) S.pFams = [saved.pFam];
     if (typeof saved.pEnch === "number" && !saved.pEnchs) S.pEnchs = [saved.pEnch];
+    if (typeof saved.rEnch === "number" && !saved.rEnchs) S.rEnchs = [saved.rEnch];
     if (saved.calc) for (const f of FAMS) for (const t of REFINE_TIERS) if (saved.calc[f] && saved.calc[f][t]) S.calc[f][t] = { ...S.calc[f][t], ...saved.calc[f][t] };
   }
 } catch (e) { /* хранилище недоступно — работаем без него */ }
@@ -94,6 +95,7 @@ S.pFams = clean(S.pFams, FAMS, ["stone"]);
 S.rFams = clean(S.rFams, FAMS, [...FAMS]);
 S.pTiers = clean(S.pTiers, ALL_TIERS, [5, 6, 7, 8]);
 S.pEnchs = clean(S.pEnchs, [0, 1, 2, 3], [0]);
+S.rEnchs = clean(S.rEnchs, [0, 1, 2, 3], [0]);
 if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
 S.cTiers = clean(S.cTiers, REFINE_TIERS, [5, 6, 7, 8]);
@@ -646,19 +648,20 @@ async function openPrices(force = false) {
 }
 
 // ---------- вкладка «Переработка» ----------
+// у камня зачарованных блоков нет: зачарованный камень сам подбирается в строке .0
+const refineEnchs = (f) => (FAM[f].stone ? (S.rEnchs.includes(0) ? [0] : []) : S.rEnchs);
 function refineIds() {
-  const out = [], e = S.rEnch;
-  for (const f of S.rFams) for (const t of S.rTiers) {
-    if (FAM[f].stone) { if (e > 0) continue; for (let k = 0; k <= 3; k++) out.push(rawId(f, t, k)); }
+  const out = [];
+  for (const f of S.rFams) for (const t of S.rTiers) for (const e of refineEnchs(f)) {
+    if (FAM[f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(f, t, k));
     else out.push(rawId(f, t, e));
     out.push(matId(f, t - 1, e), matId(f, t, e));
   }
   return [...new Set(out)];
 }
 function refineAll() {
-  const rows = [], e = S.rEnch;
-  for (const f of S.rFams) for (const t of S.rTiers) {
-    if (FAM[f].stone && e > 0) continue;
+  const rows = [];
+  for (const f of S.rFams) for (const t of S.rTiers) for (const e of refineEnchs(f)) {
     const c = calcSettings(f);
     const raw = pickRaw(f, t, e), prev = pickBuy(matId(f, t - 1, e)), sell = pickSell(matId(f, t, e));
     const row = { f, t, e, c, raw, prev, sell, ok: !!(raw && prev && sell), id: matId(f, t, e) };
@@ -671,7 +674,7 @@ function refineRows(all) {
   const key = { margin: (r) => r.margin, stack: (r) => r.profit, tier: null }[S.rSort];
   const rows = [...all].sort((a, b) => {
     if (a.ok !== b.ok) return a.ok ? -1 : 1;
-    if (!key || !a.ok) return FAMS.indexOf(a.f) - FAMS.indexOf(b.f) || a.t - b.t;
+    if (!key || !a.ok) return FAMS.indexOf(a.f) - FAMS.indexOf(b.f) || a.t - b.t || a.e - b.e;
     return key(b) - key(a);
   });
   return S.rOnlyPlus ? rows.filter((r) => r.ok && r.profit > 0) : rows;
@@ -680,17 +683,17 @@ const SORTS = [["margin", "Маржа"], ["stack", "За стак"], ["tier", "�
 function renderRefineControls() {
   famChips($("r-fam"), S.rFams, (v) => { S.rFams = v; save(); openRefine(); });
   chips($("r-tiers"), tierItems(REFINE_TIERS), (v) => S.rTiers.includes(v), (v) => { S.rTiers = toggleIn(S.rTiers, v, REFINE_TIERS); save(); openRefine(); }, tierCls);
-  chips($("r-ench"), ENCH_ITEMS, (v) => v === S.rEnch, (v) => { S.rEnch = v; save(); openRefine(); }, enchCls);
+  chips($("r-ench"), ENCH_ITEMS, (v) => S.rEnchs.includes(v), (v) => { S.rEnchs = toggleIn(S.rEnchs, v, [0, 1, 2, 3]); save(); openRefine(); }, enchCls);
   chips($("r-sort"), SORTS, (v) => v === S.rSort, (v) => { S.rSort = v; save(); renderRefineControls(); renderRefine(); });
   const sm = $("r-sort-m");
   if (!sm.options.length) SORTS.forEach(([v, l]) => sm.add(new Option(l, v)));
   sm.value = S.rSort;
   $("r-onlyplus").checked = S.rOnlyPlus;
   const parts = [famsText(S.rFams), tiersText(S.rTiers)];
-  if (S.rEnch) parts.push("." + S.rEnch);
+  if (S.rEnchs.join() !== "0") parts.push(S.rEnchs.map((e) => "." + e).join(" "));
   if (S.rOnlyPlus) parts.push("в плюсе");
   $("r-fsum").textContent = parts.join(" · ");
-  const cnt = (S.rFams.length !== FAMS.length) + (S.rTiers.length !== REFINE_TIERS.length) + (S.rEnch !== 0) + (S.rOnlyPlus ? 1 : 0);
+  const cnt = (S.rFams.length !== FAMS.length) + (S.rTiers.length !== REFINE_TIERS.length) + (S.rEnchs.join() !== "0") + (S.rOnlyPlus ? 1 : 0);
   $("r-fcount").textContent = cnt || "";
 }
 // у зачарованного камня камня в рецепте столько же, а блоков тира ниже и блоков на выходе — в 2/4/8 раз больше
@@ -760,7 +763,7 @@ function renderRefine() {
   let h = `<thead><tr><th scope="col">Что делаем</th><th scope="col">Сырьё</th><th scope="col">Тир ниже</th><th scope="col">Продажа</th><th scope="col">7 дней</th><th scope="col">За 1 шт.</th><th scope="col">Маржа</th><th scope="col">За стак</th></tr></thead><tbody>`;
   let m = "";
   if (!rows.length) {
-    const msg = S.rOnlyPlus ? "При этих условиях сейчас ничего не выходит в плюс." : S.rEnch > 0 && S.rFams.every((f) => FAM[f].stone) ? "У камня нет зачарованных блоков. Выбери другой ресурс или .0." : "Нет данных.";
+    const msg = S.rOnlyPlus ? "При этих условиях сейчас ничего не выходит в плюс." : !S.rEnchs.includes(0) && S.rFams.every((f) => FAM[f].stone) ? "У камня нет зачарованных блоков. Выбери другой ресурс или .0." : "Нет данных.";
     h += `<tr><td class="msg" colspan="8">${msg}</td></tr>`;
     m = `<div class="panel card"><span class="k">${msg}</span></div>`;
   }
@@ -1292,7 +1295,7 @@ function bindSettings() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
   window.matchMedia("(max-width: 760px)").addEventListener("change", (e) => { if (!e.matches) closeSheet(); });
   $("p-freset").addEventListener("click", () => { S.pFams = [...FAMS]; S.pTiers = [...ALL_TIERS]; S.pEnchs = [0]; S.pKind = "all"; save(); openPrices(); });
-  $("r-freset").addEventListener("click", () => { S.rFams = [...FAMS]; S.rTiers = [...REFINE_TIERS]; S.rEnch = 0; S.rOnlyPlus = false; S.rSort = "margin"; save(); openRefine(); });
+  $("r-freset").addEventListener("click", () => { S.rFams = [...FAMS]; S.rTiers = [...REFINE_TIERS]; S.rEnchs = [0]; S.rOnlyPlus = false; S.rSort = "margin"; save(); openRefine(); });
   $("r-onlyplus").addEventListener("change", (e) => { S.rOnlyPlus = e.target.checked; save(); renderRefineControls(); renderRefine(); });
   $("r-sort-m").addEventListener("change", (e) => { S.rSort = e.target.value; save(); renderRefineControls(); renderRefine(); });
   $("c-fill").addEventListener("click", marketFill);
