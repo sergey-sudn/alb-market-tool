@@ -69,7 +69,7 @@ const DEF = {
 const S = {
   settings: { ...DEF, m: [...DEF.m] },
   view: "refine",
-  pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnch: 0, pItem: null,
+  pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnch: 0, rOnlyPlus: false, rSort: "margin",
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
@@ -77,7 +77,7 @@ const S = {
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnch", "pItem", "rFams", "rTiers", "rEnch", "rOnlyPlus", "rSort", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnch", "rOnlyPlus", "rSort", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -85,6 +85,7 @@ try {
     for (const k of KEYS) if (k in saved) S[k] = saved[k];
     if (saved.jf) S.jf = { ...S.jf, ...saved.jf };
     if (saved.pFam && !saved.pFams) S.pFams = [saved.pFam];
+    if (typeof saved.pEnch === "number" && !saved.pEnchs) S.pEnchs = [saved.pEnch];
     if (saved.calc) for (const f of FAMS) for (const t of REFINE_TIERS) if (saved.calc[f] && saved.calc[f][t]) S.calc[f][t] = { ...S.calc[f][t], ...saved.calc[f][t] };
   }
 } catch (e) { /* хранилище недоступно — работаем без него */ }
@@ -92,6 +93,8 @@ const clean = (arr, allowed, fallback) => { const a = Array.isArray(arr) ? arr.f
 S.pFams = clean(S.pFams, FAMS, ["stone"]);
 S.rFams = clean(S.rFams, FAMS, [...FAMS]);
 S.pTiers = clean(S.pTiers, ALL_TIERS, [5, 6, 7, 8]);
+S.pEnchs = clean(S.pEnchs, [0, 1, 2, 3], [0]);
+if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
 S.cTiers = clean(S.cTiers, REFINE_TIERS, [5, 6, 7, 8]);
 if (!FAM[S.cFam]) S.cFam = "stone";
@@ -462,13 +465,14 @@ function renderTicker() {
 
 // ---------- вкладка «Цены» ----------
 function pricesGroups() {
-  const e = S.pEnch, groups = [];
+  const groups = [];
+  // порядок: тир → сырьё, потом материал → зачарования подряд (T6 .0, T6 .1, блок T6, T7 .0, T7 .1 …)
   for (const f of S.pFams) {
     const ids = [];
     for (const t of S.pTiers) {
-      if (e > 0 && t < 4) continue;
-      if (S.pKind !== "mat") ids.push(rawId(f, t, e));
-      if (S.pKind !== "raw" && !(FAM[f].stone && e > 0)) ids.push(matId(f, t, e));
+      const es = S.pEnchs.filter((e) => !e || t >= 4);
+      if (S.pKind !== "mat") for (const e of es) ids.push(rawId(f, t, e));
+      if (S.pKind !== "raw") for (const e of es) if (!(FAM[f].stone && e > 0)) ids.push(matId(f, t, e));
     }
     groups.push({ f, ids: [...new Set(ids)] });
   }
@@ -478,27 +482,36 @@ const pricesIds = () => pricesGroups().flatMap((g) => g.ids);
 function renderPricesControls() {
   famChips($("p-fam"), S.pFams, (v) => { S.pFams = v; save(); openPrices(); });
   chips($("p-tiers"), tierItems(ALL_TIERS), (v) => S.pTiers.includes(v), (v) => { S.pTiers = toggleIn(S.pTiers, v, ALL_TIERS); save(); openPrices(); }, tierCls);
-  chips($("p-ench"), ENCH_ITEMS, (v) => v === S.pEnch, (v) => { S.pEnch = v; S.pItem = null; save(); openPrices(); }, enchCls);
+  chips($("p-ench"), ENCH_ITEMS, (v) => S.pEnchs.includes(v), (v) => { S.pEnchs = toggleIn(S.pEnchs, v, [0, 1, 2, 3]); save(); openPrices(); }, enchCls);
+  chips($("p-mode"), [["order", "Своим ордером"], ["now", "Сразу"]], (v) => v === S.pMode, (v) => { S.pMode = v; save(); renderPricesControls(); renderPricesTable(); renderPricesWidgets(); });
+  $("p-legend").innerHTML = S.pMode === "order"
+    ? `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дорогой: там выгоднее выставить свой лот на продажу</span>
+       <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дешёвый: там дешевле всего купить своим ордером</span>`
+    : `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дешёвый: там дешевле всего купить сразу</span>
+       <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дорогой: там дороже всего продать сразу</span>`;
   chips($("p-kind"), [["all", "Всё"], ["raw", "Сырьё"], ["mat", "Материал"]], (v) => v === S.pKind, (v) => { S.pKind = v; save(); openPrices(); });
   const parts = [famsText(S.pFams), tiersText(S.pTiers)];
-  if (S.pEnch) parts.push("." + S.pEnch);
+  if (S.pEnchs.join() !== "0") parts.push(S.pEnchs.map((e) => "." + e).join(" "));
   if (S.pKind !== "all") parts.push(S.pKind === "raw" ? "сырьё" : "материал");
   $("p-fsum").textContent = parts.join(" · ");
-  const cnt = (S.pFams.length !== FAMS.length) + (S.pTiers.length !== ALL_TIERS.length) + (S.pEnch !== 0) + (S.pKind !== "all");
+  const cnt = (S.pFams.length !== FAMS.length) + (S.pTiers.length !== ALL_TIERS.length) + (S.pEnchs.join() !== "0") + (S.pKind !== "all");
   $("p-fcount").textContent = cnt || "";
   const n = pricesIds().length;
   $("p-show").textContent = `Показать ${n} ${plural(n, ["предмет", "предмета", "предметов"])}`;
 }
 function cityQuotes(id, cities) {
-  let minSell = Infinity, maxBuy = -Infinity;
+  let minSell = Infinity, maxSell = -Infinity, minBuy = Infinity, maxBuy = -Infinity;
   const q = {};
   for (const c of cities) {
     const s = liveOf(id, c, "sell"), b = liveOf(id, c, "buy");
     q[c] = { s, b };
-    if (s && s.age <= maxAge()) minSell = Math.min(minSell, s.p);
-    if (b && b.age <= maxAge()) maxBuy = Math.max(maxBuy, b.p);
+    if (s && s.age <= maxAge()) { minSell = Math.min(minSell, s.p); maxSell = Math.max(maxSell, s.p); }
+    if (b && b.age <= maxAge()) { minBuy = Math.min(minBuy, b.p); maxBuy = Math.max(maxBuy, b.p); }
   }
-  return { q, minSell, maxBuy };
+  // «сразу»: купить по самому дешёвому лоту, продать в самый дорогой ордер;
+  // «своим ордером»: купить ордером там, где ордера дешевле всего, продать лотом там, где лоты дороже всего
+  const order = S.pMode === "order";
+  return { q, minSell, maxBuy, bestS: order ? maxSell : minSell, bestB: order ? minBuy : maxBuy };
 }
 function pv(o, kind, best) {
   if (!o) return `<span class="pv none">—</span>`;
@@ -518,7 +531,7 @@ function renderPricesTable() {
     }
     for (const id of g.ids) {
       const info = parseId(id), rec = cur[`${S.settings.server}|${id}`];
-      const { q, minSell, maxBuy } = cityQuotes(id, cities);
+      const { q, bestS, bestB } = cityQuotes(id, cities);
       const sel = id === S.pItem ? " sel" : "";
       const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}</small></div></div>`;
       h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td>`;
@@ -527,7 +540,7 @@ function renderPricesTable() {
       for (const c of cities) {
         const { s, b } = q[c];
         if (!rec) { h += `<td><span class="empty">…</span></td>`; continue; }
-        const bs = s && s.p === minSell && s.age <= maxAge(), bb = b && b.p === maxBuy && b.age <= maxAge();
+        const bs = s && s.p === bestS && s.age <= maxAge(), bb = b && b.p === bestB && b.age <= maxAge();
         h += `<td><div class="cell"><span class="ptag s">продают</span>${pv(s, "s", bs)}${pa(s)}<span class="ptag b">покупают</span>${pv(b, "b", bb)}${pa(b)}</div></td>`;
         if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb)}${pa(b)}</span></div>`;
       }
@@ -556,11 +569,13 @@ function renderPricesWidgets() {
   if (!id || !pricesIds().includes(id)) { box.innerHTML = `<div class="panel widget span2"><p class="w-empty">Выбери строку в таблице, чтобы увидеть лучшие цены и перепродажу между городами.</p></div>`; return; }
   const info = parseId(id), cities = activeCities();
   const { q } = cityQuotes(id, cities);
+  const order = S.pMode === "order";
   let lo = null, hi = null;
   for (const c of cities) {
     const s = q[c].s, b = q[c].b;
-    if (s && s.age <= maxAge() && (!lo || s.p < lo.p)) lo = { ...s, city: c };
-    if (b && b.age <= maxAge() && (!hi || b.p > hi.p)) hi = { ...b, city: c };
+    const buySide = order ? b : s, sellSide = order ? s : b;
+    if (buySide && buySide.age <= maxAge() && (!lo || buySide.p < lo.p)) lo = { ...buySide, city: c };
+    if (sellSide && sellSide.age <= maxAge() && (!hi || sellSide.p > hi.p)) hi = { ...sellSide, city: c };
   }
   const ser = series7(id);
   const quote = (title, o, color, what) => `<div class="inset"><div class="k">${title}</div>`
@@ -568,7 +583,8 @@ function renderPricesWidgets() {
   let w1 = `<div class="panel widget sel-w">
     <div class="item">${icon(id, 52)}<div class="iname" style="flex:1"><span class="k">Выбрано в таблице</span><b style="font-size:20px">${esc(info.name)}</b></div>
       ${ser ? `<div class="tl-v">${spark(ser.vals, 120, 34)}<span class="k">${fmtPct(ser.delta, true)} за 7 дней</span></div>` : ""}</div>
-    <div class="pair">${quote("Купить дешевле всего", lo, "var(--bad)", "лот")}${quote("Продать сразу дороже всего", hi, "var(--good)", "ордер")}</div></div>`;
+    <div class="pair">${order ? quote("Купить своим ордером дешевле всего", lo, "var(--good)", "лучший ордер сейчас") + quote("Продать своим лотом дороже всего", hi, "var(--bad)", "самый дешёвый лот сейчас")
+      : quote("Купить сразу дешевле всего", lo, "var(--bad)", "лот") + quote("Продать сразу дороже всего", hi, "var(--good)", "ордер")}</div></div>`;
 
   // перепродажа: купить лот в одном городе, выставить свой лот в другом
   const fee = listingFee(), routes = [];
@@ -1245,7 +1261,7 @@ function bindSettings() {
   $("scrim").addEventListener("click", closeSheet);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
   window.matchMedia("(max-width: 760px)").addEventListener("change", (e) => { if (!e.matches) closeSheet(); });
-  $("p-freset").addEventListener("click", () => { S.pFams = [...FAMS]; S.pTiers = [...ALL_TIERS]; S.pEnch = 0; S.pKind = "all"; save(); openPrices(); });
+  $("p-freset").addEventListener("click", () => { S.pFams = [...FAMS]; S.pTiers = [...ALL_TIERS]; S.pEnchs = [0]; S.pKind = "all"; save(); openPrices(); });
   $("r-freset").addEventListener("click", () => { S.rFams = [...FAMS]; S.rTiers = [...REFINE_TIERS]; S.rEnch = 0; S.rOnlyPlus = false; S.rSort = "margin"; save(); openRefine(); });
   $("r-onlyplus").addEventListener("change", (e) => { S.rOnlyPlus = e.target.checked; save(); renderRefineControls(); renderRefine(); });
   $("r-sort-m").addEventListener("change", (e) => { S.rSort = e.target.value; save(); renderRefineControls(); renderRefine(); });

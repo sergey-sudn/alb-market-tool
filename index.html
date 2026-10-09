@@ -57,14 +57,12 @@
         <div class="fgroup"><span class="flabel">Тир</span><div class="chips tier-chips" id="p-tiers" role="group" aria-label="Тиры"></div></div>
         <div class="fgroup"><span class="flabel">Зачарование</span><div class="chips" id="p-ench" role="group" aria-label="Зачарование"></div></div>
         <div class="fgroup"><span class="flabel">Показать</span><div class="chips" id="p-kind" role="group" aria-label="Что показывать"></div></div>
+        <div class="fgroup"><span class="flabel">Лучшая цена</span><div class="chips" id="p-mode" role="group" aria-label="Какую цену обводить"></div></div>
         <button class="btn ghost desk" type="button" data-reload="prices">Обновить</button>
         <div class="fs-foot"><button class="btn primary block" type="button" data-close-sheet id="p-show">Показать</button></div>
       </div>
 
-      <div class="legend">
-        <span><span class="ptag s">продают</span>купить сразу или выставить лот чуть дешевле</span>
-        <span><span class="ptag b">покупают</span>продать сразу или поставить ордер чуть дороже</span>
-      </div>
+      <div class="legend" id="p-legend"></div>
       <div class="tablebox panel desk"><table class="grid prices" id="p-table"></table></div>
       <div class="cards mob" id="p-cards"></div>
     </section>
