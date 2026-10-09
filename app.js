@@ -532,10 +532,12 @@ function cityQuotes(id, cities) {
   const order = S.pMode === "order";
   return { q, minSell, maxBuy, bestS: order ? maxSell : minSell, bestB: order ? minBuy : maxBuy };
 }
-function pv(o, kind, best) {
+// для зачарованного камня div = 2/4/8: при наведении видно цену в пересчёте на обычный
+function pv(o, kind, best, div = 1) {
   if (!o) return `<span class="pv none">—</span>`;
-  return `<span class="pv${best ? ` best-${kind}` : ""}">${fmt(o.p)}</span>`;
+  return `<span class="pv${best ? ` best-${kind}` : ""}"${div > 1 ? ` title="как .0: ${fmt(o.p / div)}"` : ""}>${fmt(o.p)}</span>`;
 }
+const stoneDiv = (info) => (info && FAM[info.f].stone && info.kind === "raw" && info.e ? calcSettings(info.f).mult[info.e - 1] || 1 : 1);
 const pa = (o) => o ? `<span class="pa${o.age > maxAge() ? " old" : ""}">${fmtAge(o.age)}</span>` : `<span class="pa"></span>`;
 function renderPricesTable() {
   const groups = pricesGroups(), cities = activeCities(), tbl = $("p-table"), cards = $("p-cards");
@@ -552,7 +554,8 @@ function renderPricesTable() {
       const info = parseId(id), rec = cur[`${S.settings.server}|${id}`];
       const { q, bestS, bestB } = cityQuotes(id, cities);
       const sel = id === S.pItem ? " sel" : "";
-      const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}</small></div></div>`;
+      const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small></div></div>`;
+      const dv = stoneDiv(info);
       h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td>`;
       m += `<section class="panel card${sel}" tabindex="0" data-id="${esc(id)}"><div class="card-h">${head.replace('<div class="item">', "").replace(/<\/div>$/, "")}</div>`
         + (rec ? `<div class="m-city m-headrow"><span></span><span class="ptag s">продают</span><span class="ptag b">покупают</span></div>` : "");
@@ -560,8 +563,8 @@ function renderPricesTable() {
         const { s, b } = q[c];
         if (!rec) { h += `<td><span class="empty">…</span></td>`; continue; }
         const bs = s && s.p === bestS && s.age <= maxAge(), bb = b && b.p === bestB && b.age <= maxAge();
-        h += `<td><div class="cell"><span class="ptag s">продают</span>${pv(s, "s", bs)}${pa(s)}<span class="ptag b">покупают</span>${pv(b, "b", bb)}${pa(b)}</div></td>`;
-        if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb)}${pa(b)}</span></div>`;
+        h += `<td><div class="cell"><span class="ptag s">продают</span>${pv(s, "s", bs, dv)}${pa(s)}<span class="ptag b">покупают</span>${pv(b, "b", bb, dv)}${pa(b)}</div></td>`;
+        if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv)}${pa(b)}</span></div>`;
       }
       if (!rec) m += `<div class="m-line"><span class="k">Загружаю…</span></div>`;
       else if (cities.every((c) => !q[c].s && !q[c].b)) m += `<div class="m-line"><span class="k">Нет цен ни в одном городе</span></div>`;
@@ -597,8 +600,9 @@ function renderPricesWidgets() {
     if (sellSide && sellSide.age <= maxAge() && (!hi || sellSide.p > hi.p)) hi = { ...sellSide, city: c };
   }
   const ser = series7(id);
+  const dv = stoneDiv(info);
   const quote = (title, o, color, what) => `<div class="inset"><div class="k">${title}</div>`
-    + (o ? `<div class="bigv" style="color:${color}">${fmt(o.p)}</div><div>${cityHtml(o.city)} <span class="k">${what}, ${fmtAge(o.age)} назад</span></div>` : `<div class="bigv empty">—</div><div class="k">нет свежих цен</div>`) + `</div>`;
+    + (o ? `<div class="bigv" style="color:${color}">${fmt(o.p)}${dv > 1 ? ` <span class="eq" style="font-size:15px">(.0 — ${fmt(o.p / dv)})</span>` : ""}</div><div>${cityHtml(o.city)} <span class="k">${what}, ${fmtAge(o.age)} назад</span></div>` : `<div class="bigv empty">—</div><div class="k">нет свежих цен</div>`) + `</div>`;
   let w1 = `<div class="panel widget sel-w">
     <div class="item">${icon(id, 52)}<div class="iname" style="flex:1"><span class="k">Выбрано в таблице</span><b style="font-size:20px">${esc(info.name)}</b></div>
       ${ser ? `<div class="tl-v">${spark(ser.vals, 120, 34)}<span class="k">${fmtPct(ser.delta, true)} за 7 дней</span></div>` : ""}</div>
@@ -775,15 +779,33 @@ function priceCell(o, price, extra = "") {
   return `<td><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${extra}${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : srcAge(o)}</span></div></td>`;
 }
 const liqDot = (vol) => { const l = liquidity(vol); return `<span class="liq ${l.cls}" title="${esc(l.txt)}"></span>`; };
+// короткая подпись источника цены: «Martlock · ордер · <1 ч · ~70 556 в день»
+function metaLine(o, withVol = true) {
+  if (!o) return "";
+  const lbl = { order: "ордер", live: "лот", hist: "медиана 7 д", cap: "P80", low: "дёшево? взята P20" }[o.src] || "";
+  const parts = [cityHtml(o.city), lbl, o.age !== undefined ? fmtAge(o.age) : ""];
+  if (withVol && o.src === "order" && isFinite(o.vol)) parts.push(`~${nf0.format(o.vol)} в день`);
+  return parts.filter(Boolean).join(" · ");
+}
+// варианты камня: цена за штуку и (в скобках) в пересчёте на обычный
+function stoneVariants(r) {
+  const m = calcSettings(r.f).mult, k0 = stoneK(r);
+  return [0, 1, 2, 3].map((k) => {
+    const o = pickBuy(rawId(r.f, r.t, k));
+    const txt = !o ? `.${k} —` : k ? `.${k} ${fmt(o.price)} <span class="eq">(${fmt(o.price / m[k - 1])})</span>` : `.0 ${fmt(o.price)}`;
+    return `<span class="var${k === k0 ? " on" : ""}">${txt}</span>`;
+  }).join("");
+}
 function detHtml(r) {
   const c = r.c, kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
   const k = stoneK(r), m = stoneMult(r), rawName = itemLabel(rawId(r.f, r.t, k || r.e)), prevName = itemLabel(matId(r.f, r.t - 1, r.e));
   let h = `<div class="det-grid">`;
   h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>`
-    + kv(`${esc(rawName)} ×${N[r.t]}`, r.raw ? `${fmt(r.raw.unit)} за шт.` : "нет цены")
-    + (r.raw ? `<p class="dn">${cityHtml(r.raw.city)} · ${esc(srcText(r.raw))}${k ? `. Это камень .${k}: блоков выходит в ${nf1.format(m)} раза больше, поэтому на обычный камень он стоит ${fmt(r.raw.price)}` : ""}${r.raw.src === "order" && isFinite(r.raw.vol) ? `. Продаётся ~${nf0.format(r.raw.vol)} в день` : ""}</p>` : "")
-    + kv(`${esc(prevName)} ×${nf1.format(m)}`, r.prev ? `${fmt(r.prev.price)} за шт.` : "нет цены")
-    + (r.prev ? `<p class="dn">${cityHtml(r.prev.city)} · ${esc(srcText(r.prev))}${r.prev.src === "order" && isFinite(r.prev.vol) ? `. Продаётся ~${nf0.format(r.prev.vol)} в день` : ""}</p>` : "")
+    + kv(`${esc(rawName)} ×${N[r.t]}`, r.raw ? `${fmt(r.raw.unit)}${k ? ` <span class="eq">(.0 — ${fmt(r.raw.price)})</span>` : ""}` : "нет цены")
+    + (r.raw ? `<p class="dn">${metaLine(r.raw)}</p>` : "")
+    + (FAM[r.f].stone ? `<div class="vars" title="Цена за штуку, в скобках — в пересчёте на обычный камень: зачарованный даёт в 2/4/8 раз больше блоков">${stoneVariants(r)}</div>` : "")
+    + kv(`${esc(prevName)} ×${nf1.format(m)}`, r.prev ? fmt(r.prev.price) : "нет цены")
+    + (r.prev ? `<p class="dn">${metaLine(r.prev)}</p>` : "")
     + kv("На выходе", `${nf1.format(m)} шт.`) + `</div>`;
   if (r.ok) {
     const rawPart = N[r.t] * r.raw.paid, prevPart = r.prev.paid, before = rawPart + prevPart;
@@ -794,11 +816,11 @@ function detHtml(r) {
       + (c.station ? kv("Станция", fmt(c.station)) : "")
       + kv("Итого", fmt(r.cost)) + `</div>`;
     h += `<div class="det-b"><h4>Продажа</h4>`
-      + kv(`Цена в ${esc(r.sell.city)}`, fmt(r.sell.price))
-      + `<p class="dn">${esc(srcText(r.sell).replace("самый дешёвый лот", "свой лот по цене самого дешёвого"))}</p>`
+      + kv("Цена", fmt(r.sell.price))
+      + `<p class="dn">${metaLine(r.sell, false)}</p>`
       + kv(`Минус уценка ${fmtPct(c.buf)} и налог ${fmtPct(c.fee)}`, fmt(r.effSell))
-      + kv("Продаётся в день", isFinite(r.sell.vol) ? `~${nf0.format(r.sell.vol)} шт.` : "неизвестно")
-      + `<p class="dn">${liqDot(r.sell.vol)} ${esc(liquidity(r.sell.vol).txt)}</p></div>`;
+      + kv(`${liqDot(r.sell.vol)} Продаётся в день`, isFinite(r.sell.vol) ? `~${nf0.format(r.sell.vol)}` : "неизвестно")
+      + `<p class="dn">${esc(liquidity(r.sell.vol).txt)}</p></div>`;
     const cls = r.profit >= 0 ? "pos" : "neg";
     h += `<div class="det-b"><h4>Деньги</h4>`
       + kv("Прибыль за 1 шт.", fmtSigned(r.profit), cls)
