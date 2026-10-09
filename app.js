@@ -756,6 +756,63 @@ function goCalc(f, t) {
   S.cFam = f; if (!S.cTiers.includes(t)) S.cTiers = toggleIn(S.cTiers, t, REFINE_TIERS);
   fillCalcFromMarket(f); save(); location.hash = "calc";
 }
+// раскрытые строки таблицы (живут, пока открыта страница)
+const rOpen = new Set();
+const rowKey = (r) => `${r.f}-${r.t}-${r.e}`;
+function srcText(o) {
+  if (!o) return "";
+  const age = o.age !== undefined ? `, ${fmtAge(o.age)} назад` : "";
+  if (o.src === "order") return `свой ордер: лучший ордер +1${age}`;
+  if (o.src === "low") return `лот ${fmt(o.live)} подозрительно дешёвый, взята цена P20 за 7 дней`;
+  if (o.src === "hist") return "свежего лота нет, медиана за 7 дней";
+  if (o.src === "cap") return `лот дороже обычного, взята P80 за 7 дней${age}`;
+  return `самый дешёвый лот${age}`;
+}
+// короткая ячейка цены: число + метка, под ним «город · возраст»
+function priceCell(o, price, extra = "") {
+  if (!o) return `<td><span class="empty">нет цены</span></td>`;
+  const tag = o.src === "order" ? `<span class="tag ord">ордер</span>` : o.src === "hist" ? `<span class="tag">история</span>` : o.src === "cap" ? `<span class="tag">P80</span>` : o.src === "low" ? `<span class="tag">дёшево?</span>` : "";
+  return `<td><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${extra}${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : srcAge(o)}</span></div></td>`;
+}
+const liqDot = (vol) => { const l = liquidity(vol); return `<span class="liq ${l.cls}" title="${esc(l.txt)}"></span>`; };
+function detHtml(r) {
+  const c = r.c, kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
+  const k = stoneK(r), m = stoneMult(r), rawName = itemLabel(rawId(r.f, r.t, k || r.e)), prevName = itemLabel(matId(r.f, r.t - 1, r.e));
+  let h = `<div class="det-grid">`;
+  h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>`
+    + kv(`${esc(rawName)} ×${N[r.t]}`, r.raw ? `${fmt(r.raw.unit)} за шт.` : "нет цены")
+    + (r.raw ? `<p class="dn">${cityHtml(r.raw.city)} · ${esc(srcText(r.raw))}${k ? `. Это камень .${k}: блоков выходит в ${nf1.format(m)} раза больше, поэтому на обычный камень он стоит ${fmt(r.raw.price)}` : ""}${r.raw.src === "order" && isFinite(r.raw.vol) ? `. Продаётся ~${nf0.format(r.raw.vol)} в день` : ""}</p>` : "")
+    + kv(`${esc(prevName)} ×${nf1.format(m)}`, r.prev ? `${fmt(r.prev.price)} за шт.` : "нет цены")
+    + (r.prev ? `<p class="dn">${cityHtml(r.prev.city)} · ${esc(srcText(r.prev))}${r.prev.src === "order" && isFinite(r.prev.vol) ? `. Продаётся ~${nf0.format(r.prev.vol)} в день` : ""}</p>` : "")
+    + kv("На выходе", `${nf1.format(m)} шт.`) + `</div>`;
+  if (r.ok) {
+    const rawPart = N[r.t] * r.raw.paid, prevPart = r.prev.paid, before = rawPart + prevPart;
+    h += `<div class="det-b"><h4>Себестоимость 1 шт.</h4>`
+      + kv(`Сырьё${r.raw.fee > 1 ? " с комиссией ордера" : ""}`, fmt(rawPart))
+      + kv(`Материал тира ниже${r.prev.fee > 1 ? " с комиссией" : ""}`, fmt(prevPart))
+      + kv(`Возврат ${fmtPct(c.r)}${c.bonus ? " с бонусом дня" : ""}`, "−" + fmt(before * c.r))
+      + (c.station ? kv("Станция", fmt(c.station)) : "")
+      + kv("Итого", fmt(r.cost)) + `</div>`;
+    h += `<div class="det-b"><h4>Продажа</h4>`
+      + kv(`Цена в ${esc(r.sell.city)}`, fmt(r.sell.price))
+      + `<p class="dn">${esc(srcText(r.sell).replace("самый дешёвый лот", "свой лот по цене самого дешёвого"))}</p>`
+      + kv(`Минус уценка ${fmtPct(c.buf)} и налог ${fmtPct(c.fee)}`, fmt(r.effSell))
+      + kv("Продаётся в день", isFinite(r.sell.vol) ? `~${nf0.format(r.sell.vol)} шт.` : "неизвестно")
+      + `<p class="dn">${liqDot(r.sell.vol)} ${esc(liquidity(r.sell.vol).txt)}</p></div>`;
+    const cls = r.profit >= 0 ? "pos" : "neg";
+    h += `<div class="det-b"><h4>Деньги</h4>`
+      + kv("Прибыль за 1 шт.", fmtSigned(r.profit), cls)
+      + kv("Прибыль за стак 999", fmtBig(r.profit * STACK), cls)
+      + kv("Маржа", nf0.format(r.margin * 100) + "%", cls)
+      + kv("Вложить на стак", fmtBig(r.capital, false))
+      + `<button class="btn primary" type="button" data-calc="${r.f}" data-t="${r.t}">Открыть в «Порогах»</button></div>`;
+  } else {
+    h += `<div class="det-b"><h4>Не хватает цен</h4><p class="dn">Нет свежих цен на ${[!r.raw && "сырьё", !r.prev && "материал тира ниже", !r.sell && "продажу"].filter(Boolean).join(", ")}. Попробуй обновить цены или выбрать другие города в «Условиях».</p>`
+      + `<button class="btn" type="button" data-calc="${r.f}" data-t="${r.t}">Открыть в «Порогах»</button></div>`;
+  }
+  return h + `</div>`;
+}
+const CHEV = `<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
 function renderRefine() {
   const all = refineAll(), rows = refineRows(all), c0 = calcSettings(), tbl = $("r-table"), cards = $("r-cards");
   renderRefineWidgets(all);
@@ -768,31 +825,48 @@ function renderRefine() {
     m = `<div class="panel card"><span class="k">${msg}</span></div>`;
   }
   for (const r of rows) {
+    const key = rowKey(r), open = rOpen.has(key);
     const name = esc(itemLabel(r.id)), recipe = esc(recipeText(r));
-    h += `<tr tabindex="0" data-f="${r.f}" data-t="${r.t}"><td><div class="item">${icon(r.id, 42)}<div class="iname"><b>${name}${r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : ""}</b><small>${recipe}</small></div></div></td>`;
-    h += whereCell(r.raw, rawUnitText(r), r.raw && r.raw.unit, rawId(r.f, r.t, stoneK(r) || r.e)) + whereCell(r.prev, "", undefined, matId(r.f, r.t - 1, r.e)) + whereCell(r.sell, r.sell ? liqHtml(r.sell.vol) : "");
+    const bonus = r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : "";
+    h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${key}" aria-expanded="${open}"><td><div class="item">${CHEV}${icon(r.id, 40)}<div class="iname"><b>${name}${bonus}</b><small title="${recipe}">${recipe}</small></div></div></td>`;
+    h += priceCell(r.raw, r.raw && r.raw.unit) + priceCell(r.prev) + priceCell(r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "");
     const ser = r.sell ? series7(r.id, r.sell.city) : null;
     h += `<td>${ser ? spark(ser.vals) : `<span class="empty">—</span>`}</td>`;
-    const ln = (k, o, extra = "", price) => `<div class="m-line"><span class="k">${k}</span>${o ? cityHtml(o.city) + `<span class="age">${srcAge(o)}</span><b>${fmt(price ?? o.price)}</b>` : `<b class="empty">нет цены</b>`}</div>${extra}`;
-    m += `<section class="panel card" tabindex="0" data-f="${r.f}" data-t="${r.t}"><div class="card-h">${icon(r.id, 42)}<div class="iname"><b>${name}</b><small>${recipe}</small></div>`;
-    if (!r.ok) {
-      h += `<td colspan="4"><span class="empty">не хватает цен</span></td></tr>`;
-      m += `</div>${ln("Сырьё", r.raw)}${ln("Тир ниже", r.prev)}${ln("Продажа", r.sell)}</section>`;
-      continue;
-    }
-    const cls = r.profit >= 0 ? "pos" : "neg", col = levelColor(r.margin, r.profit, c0.m);
-    h += `<td><b class="${cls}">${fmtSigned(r.profit)}</b><small>себест. ${fmt(r.cost)}</small></td>${`<td>${marginBar(r, c0.m)}</td>`}`
-      + `<td><b class="${cls}">${fmtBig(r.profit * STACK)}</b><small>вложить ${fmtBig(r.capital, false)}</small></td></tr>`;
-    m += `<b style="color:${col};font-size:18px">${nf0.format(r.margin * 100)}%</b></div>`
-      + ln("Сырьё", r.raw, rawUnitText(r) ? `<div class="sm" style="text-align:right">${rawUnitText(r)}</div>` : "", r.raw.unit) + ln("Тир ниже", r.prev) + ln("Продажа", r.sell)
-      + `<div class="m-line"><span class="k">Продажи</span>${liqHtml(r.sell.vol)}</div>`
-      + `<div class="m-line"><span class="k">За 1 шт. / за стак</span><b class="${cls}">${fmtSigned(r.profit)}</b><b class="${cls}" style="min-width:84px">${fmtBig(r.profit * STACK)}</b></div></section>`;
+    const cls = r.ok && r.profit >= 0 ? "pos" : "neg";
+    h += r.ok ? `<td><b class="${cls}">${fmtSigned(r.profit)}</b></td><td>${marginBar(r, c0.m)}</td><td><b class="${cls}">${fmtBig(r.profit * STACK)}</b></td></tr>`
+      : `<td colspan="3"><span class="empty">не хватает цен</span></td></tr>`;
+    h += `<tr class="det"${open ? "" : " hidden"}><td colspan="8">${open ? detHtml(r) : ""}</td></tr>`;
+
+    // карточка для телефона: коротко, детали — по нажатию
+    const ln = (k, o, price, extra = "") => `<div class="m-line"><span class="k">${k}</span>${o ? `${extra}${cityHtml(o.city)}<span class="age">${srcAge(o)}</span><b>${fmt(price ?? o.price)}</b>` : `<b class="empty">нет цены</b>`}</div>`;
+    m += `<section class="panel card${open ? " open" : ""}" tabindex="0" data-key="${key}" aria-expanded="${open}"><div class="card-h">${icon(r.id, 42)}<div class="iname"><b>${name}${bonus}</b><small>${recipe}</small></div>`
+      + (r.ok ? `<b style="color:${levelColor(r.margin, r.profit, c0.m)};font-size:18px">${nf0.format(r.margin * 100)}%</b>` : "") + `${CHEV}</div>`
+      + ln("Сырьё", r.raw, r.raw && r.raw.unit) + ln("Тир ниже", r.prev) + ln("Продажа", r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "")
+      + (r.ok ? `<div class="m-line"><span class="k">За 1 шт. / за стак</span><b class="${cls}">${fmtSigned(r.profit)}</b><b class="${cls}" style="min-width:84px">${fmtBig(r.profit * STACK)}</b></div>` : "")
+      + `<div class="card-det"${open ? "" : " hidden"}>${open ? detHtml(r) : ""}</div></section>`;
   }
   tbl.innerHTML = h + "</tbody>";
   cards.innerHTML = m;
-  const go = (el) => goCalc(el.dataset.f, +el.dataset.t);
-  rowNav(tbl, "tbody tr[data-f]", go);
-  rowNav(cards, ".card[data-f]", go);
+  const byKey = Object.fromEntries(rows.map((r) => [rowKey(r), r]));
+  const toggle = (el) => {
+    const key = el.dataset.key, r = byKey[key]; if (!r) return;
+    const open = !rOpen.has(key);
+    if (open) rOpen.add(key); else rOpen.delete(key);
+    el.classList.toggle("open", open); el.setAttribute("aria-expanded", String(open));
+    const det = el.tagName === "TR" ? el.nextElementSibling : el.querySelector(".card-det");
+    const box = el.tagName === "TR" ? det.firstElementChild : det;
+    box.innerHTML = open ? detHtml(r) : ""; det.hidden = !open;
+    bindCalcBtns(box);
+  };
+  rowNav(tbl, "tbody tr.rrow", toggle);
+  cards.querySelectorAll(".card[data-key]").forEach((el) => {
+    el.addEventListener("click", (e) => { if (!e.target.closest(".card-det")) toggle(el); });
+    el.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); toggle(el); } });
+  });
+  bindCalcBtns(tbl); bindCalcBtns(cards);
+}
+function bindCalcBtns(root) {
+  root.querySelectorAll("[data-calc]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); goCalc(b.dataset.calc, +b.dataset.t); }));
 }
 async function openRefine(force = false) {
   renderRefineControls(); renderRefine();
