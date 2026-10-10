@@ -583,7 +583,9 @@ function renderPricesTable() {
   tbl.innerHTML = h + "</tbody>";
   cards.innerHTML = m;
   const pick = (el) => {
-    S.pItem = el.dataset.id; arbItem = el.dataset.id; save(); renderPricesTable(); openSelected();
+    const again = S.pItem === el.dataset.id;
+    S.pItem = again ? null : el.dataset.id; arbItem = S.pItem; save(); renderPricesTable(); openSelected();
+    if (again) return;
     if (isMobile()) $("p-widgets").scrollIntoView({ behavior: "smooth", block: "start" });
   };
   rowNav(tbl, "tbody tr[data-id]", pick);
@@ -591,8 +593,11 @@ function renderPricesTable() {
 }
 function listingFee() { const f = +S.settings.fee; return (f === 0.04 ? 0.065 : f === 0.08 ? 0.105 : f) + SETUP * relists(); }
 function renderPricesWidgets() {
-  const box = $("p-widgets"), id = S.pItem;
-  if (!id || !pricesIds().includes(id)) { box.innerHTML = `<div class="panel widget span2"><p class="w-empty">Выбери строку в таблице, чтобы увидеть лучшие цены и перепродажу между городами.</p></div>`; return; }
+  const box = $("p-widgets"), ids = pricesIds();
+  const chosen = S.pItem && ids.includes(S.pItem) ? S.pItem : null;
+  // ничего не выбрано — слева предмет из лучшей перепродажи, иначе первый предмет с ценами
+  const id = chosen || (bestRoutes()[0] || {}).id || ids.find((x) => { const r = cur[`${S.settings.server}|${x}`]; return r && Object.keys(r.cities).length; });
+  if (!id) { box.innerHTML = `<div class="panel widget span2"><p class="w-empty">${pending > 0 ? "Загружаю цены…" : "Для этого фильтра нет цен."}</p></div>`; return; }
   const info = parseId(id), cities = activeCities();
   const { q } = cityQuotes(id, cities);
   const order = S.pMode === "order";
@@ -608,7 +613,7 @@ function renderPricesWidgets() {
   const quote = (title, o, color, what) => `<div class="inset"><div class="k">${title}</div>`
     + (o ? `<div class="bigv" style="color:${color}">${fmt(o.p)}${dv > 1 ? ` <span class="eq" style="font-size:15px">(.0 — ${fmt(o.p / dv)})</span>` : ""}</div><div>${cityHtml(o.city)} <span class="k">${what}, ${fmtAge(o.age)} назад</span></div>` : `<div class="bigv empty">—</div><div class="k">нет свежих цен</div>`) + `</div>`;
   let w1 = `<div class="panel widget sel-w">
-    <div class="item">${icon(id, 52)}<div class="iname" style="flex:1"><span class="k">Выбрано в таблице</span><b style="font-size:20px">${esc(info.name)}</b></div>
+    <div class="item">${icon(id, 52)}<div class="iname" style="flex:1"><span class="k">${chosen ? "Выбрано в таблице" : "Из лучшей перепродажи · нажми на строку, чтобы выбрать"}</span><b style="font-size:20px">${esc(info.name)}</b></div>
       ${ser ? `<div class="tl-v">${spark(ser.vals, 120, 34)}<span class="k">${fmtPct(ser.delta, true)} за 7 дней</span></div>` : ""}</div>
     <div class="pair">${order ? quote("Купить своим ордером дешевле всего", lo, "var(--good)", "лучший ордер сейчас") + quote("Продать своим лотом дороже всего", hi, "var(--bad)", "самый дешёвый лот сейчас")
       : quote("Купить сразу дешевле всего", lo, "var(--bad)", "лот") + quote("Продать сразу дороже всего", hi, "var(--good)", "ордер")}</div></div>`;
@@ -616,8 +621,8 @@ function renderPricesWidgets() {
   box.innerHTML = w1 + arbWidget();
   box.querySelectorAll("[data-arb]").forEach((el) => el.addEventListener("click", () => {
     const v = el.dataset.arb;
-    if (v === "best") arbItem = null; else { arbItem = v; S.pItem = v; save(); renderPricesTable(); openSelected(); return; }
-    renderPricesWidgets();
+    if (v === "best") { arbItem = null; S.pItem = null; } else { arbItem = v; S.pItem = v; }
+    save(); renderPricesTable(); openSelected();
   }));
 }
 // перепродажа: купить лот в одном городе, выставить свой лот в другом
@@ -634,6 +639,15 @@ function routesFor(id) {
   }
   return out.sort((x, y) => y.pct - x.pct);
 }
+// лучший маршрут по каждому предмету из таблицы; только где в городе продажи покупают хотя бы ARB_MIN_VOL в день
+function bestRoutes() {
+  const best = [];
+  for (const id of pricesIds()) {
+    const r = routesFor(id).find((x) => x.net > 0 && x.vol >= ARB_MIN_VOL);
+    if (r) best.push(r);
+  }
+  return best.sort((x, y) => y.pct - x.pct);
+}
 function arbWidget() {
   const fee = listingFee();
   const sq = (c, label, price) => `<div class="sq${CITY_IMG.has(c) ? " bg-" + c.replace(/\s/g, "") : ""}" style="--cc:${CITY_COLOR[c]}"><small>${label}</small><b>${esc(c)}</b><span>${fmt(price)}</span></div>`;
@@ -644,7 +658,7 @@ function arbWidget() {
   const head = (title, extra = "") => `<div class="w-head"><span class="k">${title}</span><span class="k">${extra || `после налога ${fmtPct(fee)}, за 1 шт.`}</span></div>`;
   if (arbItem && pricesIds().includes(arbItem)) {
     const id = arbItem, routes = routesFor(id);
-    let h = `<div class="panel widget">${head(`Перепродажа: ${esc(itemLabel(id))}`, `<button type="button" class="linkbtn" data-arb="best">← лучшая по всем</button>`)}`;
+    let h = `<div class="panel widget">${head(`Перепродажа: ${esc(itemLabel(id))}`, `<button type="button" class="linkbtn" data-arb="best">✕ снять выбор</button>`)}`;
     if (!routes.length) return h + `<p class="w-empty">Нужны свежие лоты хотя бы в двух городах.</p></div>`;
     h += big(routes[0]);
     if (routes[0].net <= 0) h += `<p class="w-empty">Сейчас перепродажа этого предмета не окупается: показан наименее убыточный маршрут.</p>`;
@@ -652,13 +666,7 @@ function arbWidget() {
     if (more.length) h += `<div class="routes"><span>Ещё маршруты:</span>${more.map((x) => `<span>${cityHtml(x.a)} → ${cityHtml(x.b)} <b class="pos">${fmtPct(x.pct, true)}</b></span>`).join("")}</div>`;
     return h + `</div>`;
   }
-  // лучший маршрут по каждому предмету из таблицы; только где в городе продажи покупают хотя бы ARB_MIN_VOL в день
-  const best = [];
-  for (const id of pricesIds()) {
-    const r = routesFor(id).find((x) => x.net > 0 && x.vol >= ARB_MIN_VOL);
-    if (r) best.push(r);
-  }
-  best.sort((x, y) => y.pct - x.pct);
+  const best = bestRoutes();
   let h = `<div class="panel widget">${head("Лучшая перепродажа между городами", `среди показанных, налог ${fmtPct(fee)}`)}`;
   if (!best.length) return h + `<p class="w-empty">${pending > 0 ? "Считаю маршруты…" : "Среди показанных в таблице сейчас нет выгодных маршрутов с заметным объёмом продаж."}</p></div>`;
   const r = best[0];
@@ -671,13 +679,13 @@ async function openSelected() {
   if (S.pItem) { await ensure([S.pItem], { history: true }); if (S.view === "prices") renderPricesWidgets(); }
 }
 async function openPrices(force = false) {
+  arbItem = S.pItem; // виджет перепродажи всегда про выбранную строку, а без выбора — про лучший маршрут
   renderPricesControls(); renderPricesTable(); renderPricesWidgets();
   await ensure(pricesIds(), { history: false, force });
   if (S.view !== "prices") return;
   const ids = pricesIds();
-  if (!S.pItem || !ids.includes(S.pItem)) {
-    S.pItem = ids.find((id) => { const r = cur[`${S.settings.server}|${id}`]; return r && Object.keys(r.cities).length; }) || ids[0] || null;
-  }
+  if (S.pItem && !ids.includes(S.pItem)) S.pItem = null; // выбор сбрасывается, только если предмет пропал из фильтра
+  if (arbItem && !ids.includes(arbItem)) arbItem = null;
   renderPricesControls(); renderPricesTable();
   await openSelected();
   await ensure(ids, { history: true });
