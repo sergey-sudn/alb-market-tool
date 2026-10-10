@@ -384,6 +384,9 @@ function icon(id, size = 42, tier = true) {
     + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`
     + (tier ? `<span class="tier">T${p.t}${p.e ? `<sup>.${p.e}</sup>` : ""}</span>` : "") + `</span>`;
 }
+// короткое обозначение города, как принято у игроков: BW, ML, TF, FS, LH, CL, BR
+const CITY_CODE = { Bridgewatch: "BW", Martlock: "ML", Thetford: "TF", "Fort Sterling": "FS", Lymhurst: "LH", Caerleon: "CL", Brecilien: "BR" };
+const cityBadge = (c) => `<span class="cb" style="--cc:${CITY_COLOR[c]}" title="${esc(c)}">${CITY_CODE[c] || esc(c.slice(0, 2))}</span>`;
 const cityHtml = (c) => c ? `<span class="city" style="color:${CITY_COLOR[c]}">${esc(c)}</span>` : "";
 function srcAge(o) {
   if (!o) return "";
@@ -987,8 +990,8 @@ function whereSell(r) {
   if (!r.ok) return "";
   const rows = activeCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
-  return `<div class="det-b"><h4>Где продать</h4>${rows.map(({ c, o }) => `<div class="dl ws${c === r.sell.city ? " on" : ""}"><span>${cityHtml(c)}</span><span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)}` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
-    <p class="dn">Сколько продаётся в день, цена и прибыль с 1 шт. при продаже в этом городе</p></div>`;
+  return `<div class="det-b"><h4>Где продать</h4>${rows.map(({ c, o }) => `<div class="dl ws${c === r.sell.city ? " on" : ""}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
+    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. при продаже там</p></div>`;
 }
 // закупочный лист на N стаков на выходе
 function shopList(r) {

@@ -503,7 +503,7 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .own-box .dn{margin:0}
 .lnk{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:3px}
 .lnk:hover{text-decoration-color:currentColor}
-.det-b .ws{display:grid;grid-template-columns:minmax(0,1fr) auto 52px 56px;gap:6px;font-size:13px;padding:4px 6px;border-radius:8px;margin:0 -6px}
+.det-b .ws{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;font-size:13px;padding:4px 6px;border-radius:8px;margin:0 -6px}
 .det-b .ws.on{background:var(--accent-soft)}
 .det-b .ws b{text-align:right}
 .ws-v{color:var(--muted)!important;font-size:12px}
@@ -512,3 +512,6 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .tops .tl{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px 20px}
 .tops .seg button{font-size:13px;padding:6px 12px}
 .det-b .ws>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cb{display:inline-grid;place-items:center;min-width:28px;height:22px;padding:0 4px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--cc);background:color-mix(in srgb,var(--cc) 14%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--cc) 70%,transparent)}
+.det-b .ws .ws-v{text-align:left}
+.det-b .ws b{min-width:44px}
