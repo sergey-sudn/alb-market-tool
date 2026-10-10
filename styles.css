@@ -516,3 +516,14 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .det-b .ws .ws-v{text-align:left}
 .det-b .ws b{min-width:44px}
 .pv.odd{color:var(--faint);text-decoration:line-through;text-decoration-color:var(--muted);cursor:help}
+@media (max-width:1240px){.refine .c-spark{display:none}.refine .iname small{max-width:200px}}
+/* детали не уезжают вместе с прокруткой широкой таблицы */
+.tablebox{container-type:inline-size}
+.det-grid{position:sticky;left:20px;max-width:calc(100cqw - 40px)}
+@media (max-width:1100px){.refine .mbar{display:none}.refine .mcell{min-width:0;justify-content:flex-end}.refine .iname small{max-width:160px}}
+/* на планшетах «Переработка» тоже карточками, в две колонки — таблица туда не влезает */
+@media (min-width:761px) and (max-width:1080px){
+  #view-refine .tablebox{display:none}
+  #r-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+  #r-cards .card.open{grid-column:1/-1}
+}

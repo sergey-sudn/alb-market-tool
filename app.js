@@ -915,25 +915,15 @@ function detHtml(r) {
     + (r.own ? `<div class="own-box"><div class="dl"><span>Сделать самому</span><b class="pos">${fmt(r.own.cost)} <span class="eq">(−${nf0.format(r.own.save * 100)}%)</span></b></div><p class="dn">${esc(itemLabel(rawId(r.f, r.t - 1, stoneK({ ...r, raw: r.own.raw }) || r.e)))} ×${N[r.t - 1]} по ${fmt(r.own.raw.unit)} + ${esc(itemLabel(matId(r.f, r.t - 2, r.e)))} ×${nf1.format(stoneMult({ ...r, raw: r.own.raw }))} по ${fmt(r.own.prev.price)}, с возвратом</p></div>` : "")
     + kv("На выходе", `${nf1.format(m)} шт.`) + `</div>`;
   if (r.ok) {
-    const rawPart = N[r.t] * r.raw.paid, prevPart = r.prev.paid, before = rawPart + prevPart;
-    h += `<div class="det-b"><h4>Себестоимость 1 шт.</h4>`
-      + kv(`Сырьё${r.raw.fee > 1 ? " с комиссией ордера" : ""}`, fmt(rawPart))
-      + kv(`Материал тира ниже${r.prev.fee > 1 ? " с комиссией" : ""}`, fmt(prevPart))
-      + kv(`Возврат ${fmtPct(c.r)}${c.bonus ? " с бонусом дня" : ""}`, "−" + fmt(before * c.r))
-      + (c.station ? kv("Станция", fmt(c.station)) : "")
-      + kv("Итого", fmt(r.cost)) + `</div>`;
-    h += `<div class="det-b"><h4>Продажа</h4>`
-      + kv(lnk(r.id, "Цена"), fmt(r.sell.price))
-      + `<p class="dn">${metaLine(r.sell, false)}</p>`
-      + kv(`Минус уценка ${fmtPct(c.buf)} и ${relists() ? "налог со сборами" : "налог"} ${fmtPct(c.fee)}`, fmt(r.effSell))
-      + kv(`${liqDot(r.sell.vol)} Продаётся в день`, isFinite(r.sell.vol) ? `~${nf0.format(r.sell.vol)}` : "неизвестно")
-      + `<p class="dn">${esc(liquidity(r.sell.vol).txt)}</p></div>`;
+    const rawPart = N[r.t] * r.raw.paid, prevPart = r.prev.paid;
     const cls = r.profit >= 0 ? "pos" : "neg";
     h += whereSell(r) + shopList(r);
     h += `<div class="det-b"><h4>Деньги</h4>`
       + kv("Прибыль за 1 шт.", fmtSigned(r.profit), cls)
       + kv("Прибыль за стак 999", fmtBig(r.profit * STACK), cls)
       + kv("Маржа", nf0.format(r.margin * 100) + "%", cls)
+      + kv("Себестоимость 1 шт.", fmt(r.cost))
+      + `<p class="dn">(сырьё ${fmt(rawPart)} + тир ниже ${fmt(prevPart)}${r.raw.fee > 1 || r.prev.fee > 1 ? ", с комиссией ордера" : ""}) × (1 − возврат ${fmtPct(c.r)})${c.station ? ` + станция ${fmt(c.station)}` : ""}</p>`
       + kv("Вложить на стак", fmtBig(r.capital, false))
       + (r.own ? kv("Если тир ниже сделать самому", fmtBig(r.own.profit * STACK) + " за стак", "pos") : "")
       + focusKv(r)
@@ -949,7 +939,7 @@ function renderRefine() {
   const all = refineAll(), rows = refineRows(all), c0 = calcSettings(), tbl = $("r-table"), cards = $("r-cards");
   renderRefineWidgets(all);
   $("r-show").textContent = `Показать ${rows.length} ${plural(rows.length, ["рецепт", "рецепта", "рецептов"])}`;
-  let h = `<thead><tr><th scope="col">Что делаем</th><th scope="col">Сырьё</th><th scope="col">Тир ниже</th><th scope="col">Продажа</th><th scope="col">7 дней</th><th scope="col">За 1 шт.</th><th scope="col">Маржа</th><th scope="col">За стак</th></tr></thead><tbody>`;
+  let h = `<thead><tr><th scope="col">Что делаем</th><th scope="col">Сырьё</th><th scope="col">Тир ниже</th><th scope="col">Продажа</th><th scope="col" class="c-spark">7 дней</th><th scope="col">За 1 шт.</th><th scope="col">Маржа</th><th scope="col">За стак</th></tr></thead><tbody>`;
   let m = "";
   if (!rows.length) {
     const msg = S.rOnlyPlus ? "При этих условиях сейчас ничего не выходит в плюс." : !S.rEnchs.includes(0) && S.rFams.every((f) => FAM[f].stone) ? "У камня нет зачарованных блоков. Выбери другой ресурс или .0." : "Нет данных.";
@@ -963,7 +953,7 @@ function renderRefine() {
     h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${key}" aria-expanded="${open}"><td><div class="item">${CHEV}${icon(r.id, 40)}<div class="iname"><b>${name}${bonus}</b><small title="${recipe}">${recipe}</small></div></div></td>`;
     h += priceCell(r.raw, r.raw && r.raw.unit) + priceCell(r.prev, undefined, "", r.own ? `<span class="tag own" title="Сделать самому: ${fmt(r.own.cost)} вместо ${fmt(r.prev.paid)}">свой −${nf0.format(r.own.save * 100)}%</span>` : "") + priceCell(r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "");
     const ser = r.sell ? series7(r.id, r.sell.city) : null;
-    h += `<td>${ser ? spark(ser.vals) : `<span class="empty">—</span>`}</td>`;
+    h += `<td class="c-spark">${ser ? spark(ser.vals) : `<span class="empty">—</span>`}</td>`;
     const cls = r.ok && r.profit >= 0 ? "pos" : "neg";
     h += r.ok ? `<td><b class="${cls}">${fmtSigned(r.profit)}</b></td><td>${marginBar(r, c0.m)}</td><td><b class="${cls}">${fmtBig(r.profit * STACK)}</b></td></tr>`
       : `<td colspan="3"><span class="empty">не хватает цен</span></td></tr>`;
@@ -1010,8 +1000,10 @@ function whereSell(r) {
   if (!r.ok) return "";
   const rows = activeCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
-  return `<div class="det-b"><h4>Где продать</h4>${rows.map(({ c, o }) => `<div class="dl ws${c === r.sell.city ? " on" : ""}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
-    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. при продаже там</p></div>`;
+  const liq = liquidity(r.sell.vol);
+  return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<div class="dl ws${c === r.sell.city ? " on" : ""}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
+    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. Цена за вычетом уценки ${fmtPct(r.c.buf)} и ${relists() ? "налога со сборами" : "налога"} ${fmtPct(r.c.fee)}</p>
+    <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
 }
 // закупочный лист на N стаков на выходе
 function shopList(r) {
