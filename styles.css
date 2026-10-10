@@ -489,3 +489,15 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .var{font-size:12px;padding:3px 8px;border-radius:8px;background:var(--hover);color:var(--ink-2);white-space:nowrap}
 .var.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
 .det-b .dl span .liq{margin-right:4px}
+.arb-item{display:flex;align-items:center;gap:10px;background:none;border:0;padding:0;cursor:pointer;color:var(--ink);text-align:left;font-size:15px}
+.arb-item .k{margin-left:auto}
+.arb-item:hover b{color:var(--ink-2)}
+.routes-list{flex-direction:column;gap:2px}
+.route{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:10px;background:none;border:0;padding:5px 4px;border-radius:10px;cursor:pointer;color:var(--ink-2);font-size:13px;text-align:left}
+.route:hover{background:var(--hover)}
+.route .rn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.route .ic .tier{display:none}
+@media (max-width:760px){.route{grid-template-columns:auto minmax(0,1fr) auto}.route>span:nth-child(3){grid-column:2;grid-row:2;font-size:12px}.route b{grid-row:1/3;grid-column:3}}
+.tag.own{background:var(--good-bg);color:var(--good);margin:0 6px 0 0}
+.own-box{margin:2px 0 6px;padding:6px 10px;border-radius:10px;background:var(--good-bg)}
+.own-box .dn{margin:0}

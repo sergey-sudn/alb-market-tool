@@ -583,7 +583,7 @@ function renderPricesTable() {
   tbl.innerHTML = h + "</tbody>";
   cards.innerHTML = m;
   const pick = (el) => {
-    S.pItem = el.dataset.id; save(); renderPricesTable(); openSelected();
+    S.pItem = el.dataset.id; arbItem = el.dataset.id; save(); renderPricesTable(); openSelected();
     if (isMobile()) $("p-widgets").scrollIntoView({ behavior: "smooth", block: "start" });
   };
   rowNav(tbl, "tbody tr[data-id]", pick);
@@ -613,31 +613,58 @@ function renderPricesWidgets() {
     <div class="pair">${order ? quote("Купить своим ордером дешевле всего", lo, "var(--good)", "лучший ордер сейчас") + quote("Продать своим лотом дороже всего", hi, "var(--bad)", "самый дешёвый лот сейчас")
       : quote("Купить сразу дешевле всего", lo, "var(--bad)", "лот") + quote("Продать сразу дороже всего", hi, "var(--good)", "ордер")}</div></div>`;
 
-  // перепродажа: купить лот в одном городе, выставить свой лот в другом
-  const fee = listingFee(), routes = [];
+  box.innerHTML = w1 + arbWidget();
+  box.querySelectorAll("[data-arb]").forEach((el) => el.addEventListener("click", () => {
+    const v = el.dataset.arb;
+    if (v === "best") arbItem = null; else { arbItem = v; S.pItem = v; save(); renderPricesTable(); openSelected(); return; }
+    renderPricesWidgets();
+  }));
+}
+// перепродажа: купить лот в одном городе, выставить свой лот в другом
+let arbItem = null; // null — лучший маршрут среди показанных; иначе — для выбранного предмета
+const ARB_MIN_VOL = 100;
+function routesFor(id) {
+  const cities = activeCities(), { q } = cityQuotes(id, cities), fee = listingFee(), out = [];
   for (const a of cities) for (const b of cities) {
     if (a === b) continue;
     const sa = q[a].s, sb = q[b].s;
     if (!sa || !sb || sa.age > maxAge() || sb.age > maxAge()) continue;
-    const net = sb.p * (1 - fee) - sa.p;
-    routes.push({ a, b, buy: sa.p, sell: sb.p, net, pct: net / sa.p });
+    const net = sb.p * (1 - fee) - sa.p, hs = histStats(id, b);
+    out.push({ id, a, b, buy: sa.p, sell: sb.p, net, pct: net / sa.p, vol: hs ? hs.vol : NaN });
   }
-  routes.sort((x, y) => y.pct - x.pct);
-  let w2 = `<div class="panel widget"><div class="w-head"><span class="k">Перепродажа между городами</span><span class="k">после налога ${fmtPct(fee)}, за 1 шт.</span></div>`;
-  if (!routes.length) w2 += `<p class="w-empty">Нужны свежие лоты хотя бы в двух городах.</p>`;
-  else {
-    const r = routes[0], hs = histStats(id, r.b), good = r.net > 0;
-    const sq = (c, label, price) => `<div class="sq${CITY_IMG.has(c) ? " bg-" + c.replace(/\s/g, "") : ""}" style="--cc:${CITY_COLOR[c]}"><small>${label}</small><b>${esc(c)}</b><span>${fmt(price)}</span></div>`;
-    w2 += `<div class="arb">${sq(r.a, "Купи в", r.buy)}<svg class="arrow" viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h18M16 7l7 7-7 7"/></svg>${sq(r.b, "Выставь лот в", r.sell)}
-      <div class="arb-info"><div class="arb-pct ${good ? "pos" : "neg"}">${fmtPct(r.pct, true)}</div>
+  return out.sort((x, y) => y.pct - x.pct);
+}
+function arbWidget() {
+  const fee = listingFee();
+  const sq = (c, label, price) => `<div class="sq${CITY_IMG.has(c) ? " bg-" + c.replace(/\s/g, "") : ""}" style="--cc:${CITY_COLOR[c]}"><small>${label}</small><b>${esc(c)}</b><span>${fmt(price)}</span></div>`;
+  const big = (r) => `<div class="arb">${sq(r.a, "Купи в", r.buy)}<svg class="arrow" viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h18M16 7l7 7-7 7"/></svg>${sq(r.b, "Выставь лот в", r.sell)}
+      <div class="arb-info"><div class="arb-pct ${r.net > 0 ? "pos" : "neg"}">${fmtPct(r.pct, true)}</div>
       <div style="font-weight:600">${fmtSigned(r.net)} с 1 шт.</div><div class="k">${fmtBig(r.net * STACK)} за стак</div>
-      ${hs ? `<div class="k">в ${esc(r.b)} ~${nf0.format(hs.vol)} в день</div>` : ""}</div></div>`;
-    if (!good) w2 += `<p class="w-empty">Сейчас перепродажа этого предмета не окупается: показан наименее убыточный маршрут.</p>`;
+      ${isFinite(r.vol) ? `<div class="k">в ${esc(r.b)} ~${nf0.format(r.vol)} в день</div>` : ""}</div></div>`;
+  const head = (title, extra = "") => `<div class="w-head"><span class="k">${title}</span><span class="k">${extra || `после налога ${fmtPct(fee)}, за 1 шт.`}</span></div>`;
+  if (arbItem && pricesIds().includes(arbItem)) {
+    const id = arbItem, routes = routesFor(id);
+    let h = `<div class="panel widget">${head(`Перепродажа: ${esc(itemLabel(id))}`, `<button type="button" class="linkbtn" data-arb="best">← лучшая по всем</button>`)}`;
+    if (!routes.length) return h + `<p class="w-empty">Нужны свежие лоты хотя бы в двух городах.</p></div>`;
+    h += big(routes[0]);
+    if (routes[0].net <= 0) h += `<p class="w-empty">Сейчас перепродажа этого предмета не окупается: показан наименее убыточный маршрут.</p>`;
     const more = routes.slice(1, 4).filter((x) => x.net > 0);
-    if (more.length) w2 += `<div class="routes"><span>Ещё маршруты:</span>${more.map((x) => `<span>${cityHtml(x.a)} → ${cityHtml(x.b)} <b class="pos">${fmtPct(x.pct, true)}</b></span>`).join("")}</div>`;
+    if (more.length) h += `<div class="routes"><span>Ещё маршруты:</span>${more.map((x) => `<span>${cityHtml(x.a)} → ${cityHtml(x.b)} <b class="pos">${fmtPct(x.pct, true)}</b></span>`).join("")}</div>`;
+    return h + `</div>`;
   }
-  w2 += `</div>`;
-  box.innerHTML = w1 + w2;
+  // лучший маршрут по каждому предмету из таблицы; только где в городе продажи покупают хотя бы ARB_MIN_VOL в день
+  const best = [];
+  for (const id of pricesIds()) {
+    const r = routesFor(id).find((x) => x.net > 0 && x.vol >= ARB_MIN_VOL);
+    if (r) best.push(r);
+  }
+  best.sort((x, y) => y.pct - x.pct);
+  let h = `<div class="panel widget">${head("Лучшая перепродажа между городами", `среди показанных, налог ${fmtPct(fee)}`)}`;
+  if (!best.length) return h + `<p class="w-empty">${pending > 0 ? "Считаю маршруты…" : "Среди показанных в таблице сейчас нет выгодных маршрутов с заметным объёмом продаж."}</p></div>`;
+  const r = best[0];
+  h += `<button type="button" class="arb-item" data-arb="${esc(r.id)}">${icon(r.id, 34)}<b>${esc(itemLabel(r.id))}</b><span class="k">подробнее →</span></button>` + big(r);
+  if (best.length > 1) h += `<div class="routes routes-list">${best.slice(1, 4).map((x) => `<button type="button" class="route" data-arb="${esc(x.id)}">${icon(x.id, 26)}<span class="rn">${esc(itemLabel(x.id))}</span><span>${cityHtml(x.a)} → ${cityHtml(x.b)}</span><b class="pos">${fmtPct(x.pct, true)}</b></button>`).join("")}</div>`;
+  return h + `</div>`;
 }
 async function openSelected() {
   renderPricesWidgets();
@@ -653,6 +680,8 @@ async function openPrices(force = false) {
   }
   renderPricesControls(); renderPricesTable();
   await openSelected();
+  await ensure(ids, { history: true });
+  if (S.view === "prices") renderPricesWidgets();
 }
 
 // ---------- вкладка «Переработка» ----------
@@ -661,19 +690,33 @@ const refineEnchs = (f) => (FAM[f].stone ? (S.rEnchs.includes(0) ? [0] : []) : S
 function refineIds() {
   const out = [];
   for (const f of S.rFams) for (const t of S.rTiers) for (const e of refineEnchs(f)) {
-    if (FAM[f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(f, t, k));
-    else out.push(rawId(f, t, e));
-    out.push(matId(f, t - 1, e), matId(f, t, e));
+    if (FAM[f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(f, t, k), rawId(f, t - 1, k));
+    else out.push(rawId(f, t, e), rawId(f, t - 1, e));
+    out.push(matId(f, t - 1, e), matId(f, t, e), matId(f, t - 2, e)); // тир ниже и два тира ниже — для «сделать самому»
   }
   return [...new Set(out)];
 }
+// себестоимость материала, если сделать его самому из рыночного сырья (для сравнения с покупкой)
+function ownCost(f, t, e) {
+  if (t < 3) return null;
+  const c = calcSettings(f), raw = pickRaw(f, t, e), prev = pickBuy(matId(f, t - 1, e));
+  if (!raw || !prev) return null;
+  return { cost: economics(t, raw.paid, prev.paid, 1, { ...c, bf: 1 }).cost, raw, prev };
+}
+const OWN_BETTER = 0.03;
 function refineAll() {
   const rows = [];
   for (const f of S.rFams) for (const t of S.rTiers) for (const e of refineEnchs(f)) {
     const c = calcSettings(f);
     const raw = pickRaw(f, t, e), prev = pickBuy(matId(f, t - 1, e)), sell = pickSell(matId(f, t, e));
     const row = { f, t, e, c, raw, prev, sell, ok: !!(raw && prev && sell), id: matId(f, t, e) };
-    if (row.ok) Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }));
+    if (row.ok) {
+      Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }));
+      const own = ownCost(f, t - 1, e);
+      if (own && own.cost < prev.paid * (1 - OWN_BETTER)) {
+        row.own = { ...own, save: 1 - own.cost / prev.paid, profit: economics(t, raw.paid, own.cost, sell.price, { ...c, bf: 1 }).profit };
+      }
+    }
     rows.push(row);
   }
   return rows;
@@ -777,10 +820,10 @@ function srcText(o) {
   return `самый дешёвый лот${age}`;
 }
 // короткая ячейка цены: число + метка, под ним «город · возраст»
-function priceCell(o, price, extra = "") {
+function priceCell(o, price, extra = "", tag2 = "") {
   if (!o) return `<td><span class="empty">нет цены</span></td>`;
   const tag = o.src === "order" ? `<span class="tag ord">ордер</span>` : o.src === "hist" ? `<span class="tag">история</span>` : o.src === "cap" ? `<span class="tag">P80</span>` : o.src === "low" ? `<span class="tag">дёшево?</span>` : "";
-  return `<td><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${extra}${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : srcAge(o)}</span></div></td>`;
+  return `<td>${tag2}<span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${extra}${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : srcAge(o)}</span></div></td>`;
 }
 const liqDot = (vol) => { const l = liquidity(vol); return `<span class="liq ${l.cls}" title="${esc(l.txt)}"></span>`; };
 // короткая подпись источника цены: «Martlock · ордер · <1 ч · ~70 556 в день»
@@ -810,6 +853,7 @@ function detHtml(r) {
     + (FAM[r.f].stone ? `<div class="vars" title="Цена за штуку, в скобках — в пересчёте на обычный камень: зачарованный даёт в 2/4/8 раз больше блоков">${stoneVariants(r)}</div>` : "")
     + kv(`${esc(prevName)} ×${nf1.format(m)}`, r.prev ? fmt(r.prev.price) : "нет цены")
     + (r.prev ? `<p class="dn">${metaLine(r.prev)}</p>` : "")
+    + (r.own ? `<div class="own-box"><div class="dl"><span>Сделать самому</span><b class="pos">${fmt(r.own.cost)} <span class="eq">(−${nf0.format(r.own.save * 100)}%)</span></b></div><p class="dn">${esc(itemLabel(rawId(r.f, r.t - 1, stoneK({ ...r, raw: r.own.raw }) || r.e)))} ×${N[r.t - 1]} по ${fmt(r.own.raw.unit)} + ${esc(itemLabel(matId(r.f, r.t - 2, r.e)))} ×${nf1.format(stoneMult({ ...r, raw: r.own.raw }))} по ${fmt(r.own.prev.price)}, с возвратом</p></div>` : "")
     + kv("На выходе", `${nf1.format(m)} шт.`) + `</div>`;
   if (r.ok) {
     const rawPart = N[r.t] * r.raw.paid, prevPart = r.prev.paid, before = rawPart + prevPart;
@@ -831,6 +875,7 @@ function detHtml(r) {
       + kv("Прибыль за стак 999", fmtBig(r.profit * STACK), cls)
       + kv("Маржа", nf0.format(r.margin * 100) + "%", cls)
       + kv("Вложить на стак", fmtBig(r.capital, false))
+      + (r.own ? kv("Если тир ниже сделать самому", fmtBig(r.own.profit * STACK) + " за стак", "pos") : "")
       + `<button class="btn primary" type="button" data-calc="${r.f}" data-t="${r.t}">Открыть в «Порогах»</button></div>`;
   } else {
     h += `<div class="det-b"><h4>Не хватает цен</h4><p class="dn">Нет свежих цен на ${[!r.raw && "сырьё", !r.prev && "материал тира ниже", !r.sell && "продажу"].filter(Boolean).join(", ")}. Попробуй обновить цены или выбрать другие города в «Условиях».</p>`
@@ -855,7 +900,7 @@ function renderRefine() {
     const name = esc(itemLabel(r.id)), recipe = esc(recipeText(r));
     const bonus = r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : "";
     h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${key}" aria-expanded="${open}"><td><div class="item">${CHEV}${icon(r.id, 40)}<div class="iname"><b>${name}${bonus}</b><small title="${recipe}">${recipe}</small></div></div></td>`;
-    h += priceCell(r.raw, r.raw && r.raw.unit) + priceCell(r.prev) + priceCell(r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "");
+    h += priceCell(r.raw, r.raw && r.raw.unit) + priceCell(r.prev, undefined, "", r.own ? `<span class="tag own" title="Сделать самому: ${fmt(r.own.cost)} вместо ${fmt(r.prev.paid)}">свой −${nf0.format(r.own.save * 100)}%</span>` : "") + priceCell(r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "");
     const ser = r.sell ? series7(r.id, r.sell.city) : null;
     h += `<td>${ser ? spark(ser.vals) : `<span class="empty">—</span>`}</td>`;
     const cls = r.ok && r.profit >= 0 ? "pos" : "neg";
