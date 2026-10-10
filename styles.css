@@ -71,13 +71,13 @@ main{display:flex;flex-direction:column;gap:22px;min-width:0}
 .tool-btns{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ---- шапка ---- */
-.bar{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:10px 12px 10px 20px;border-radius:20px}
+.bar{display:flex;align-items:center;gap:20px;flex-wrap:nowrap;padding:10px 12px 10px 20px;border-radius:20px}
 .brand{font-family:var(--f-display);font-weight:700;font-size:17px;color:var(--ink);text-decoration:none}
 .tabs{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--inset)}
 .tabs button{border:0;background:none;padding:8px 16px;border-radius:10px;color:var(--ink-2);font-weight:500;cursor:pointer;white-space:nowrap}
 .tabs button:hover{color:var(--ink)}
 .tabs button[aria-selected="true"]{background:var(--on-bg);color:var(--on-fg);font-weight:600}
-.bar-end{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted);flex-wrap:wrap;min-width:0}
+.bar-end{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted);flex-wrap:nowrap;min-width:0}
 .status{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-width:0}
 .status .dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 12px var(--good);flex:none}
 .status.busy .dot{background:var(--warn);box-shadow:0 0 12px var(--warn)}
@@ -98,7 +98,11 @@ main{display:flex;flex-direction:column;gap:22px;min-width:0}
 .btn:disabled{opacity:.55;cursor:progress}
 .btn svg,.sortpick svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .icon-btn{padding:9px;width:40px;height:40px}
-.settings-btn{background:var(--hover)}
+.settings-btn{background:var(--hover);min-width:0}
+#sumhint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34ch}
+.tabs{flex:none}
+@media (max-width:1240px){.status .st-long{display:none}}
+@media (max-width:1060px){#sumhint{display:none}}
 .linkbtn{border:0;background:none;color:var(--ink-2);font-size:14px;padding:8px;cursor:pointer}
 .filebtn{position:relative;overflow:hidden}
 .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}

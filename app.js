@@ -1353,7 +1353,9 @@ function setTheme(t) {
 function sumHint() {
   const c = calcSettings(), st = S.settings;
   const rp = nf1.format((st.rrr === "custom" ? num(st.rrrc) || 0 : +st.rrr * 100));
-  $("sumhint").textContent = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%, закупка ${st.order ? "ордером" : "сразу"}${relists() ? `, перевыставлений ${nf1.format(relists())}` : ""}${st.bonusFam ? `, бонус: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
+  // в шапке — коротко, полный текст — во всплывающей подсказке
+  $("sumhint").textContent = [`возврат ${rp}%`, `маржа ${nf1.format(c.m * 100)}%`, st.bonusFam ? `бонус +${st.bonusPct}%` : ""].filter(Boolean).join(" · ");
+  $("open-settings").title = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%, закупка ${st.order ? "своим ордером" : "сразу"}${relists() ? `, перевыставлений ${nf1.format(relists())}` : ""}${st.bonusFam ? `, бонус дня: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
   $("s-rrrc").hidden = st.rrr !== "custom";
   const k = calcSettings().k;
   $("s-rrr-hint").textContent = k > 0 && k < 1 ? `С перекрафтом возврата из сырья на 1000 крафтов выйдет ~${nf0.format(1000 / k)} шт. (+${nf0.format((1 / k - 1) * 100)}%): вернувшиеся ресурсы снова идут в переработку, и так до конца.` : "";
