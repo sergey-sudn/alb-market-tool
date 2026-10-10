@@ -236,13 +236,27 @@ function histPts(id, city, days = 8) {
   const since = Date.now() - days * 864e5;
   return arr.filter((d) => d.t >= since);
 }
-function histStats(id, city) {
-  const pts = histPts(id, city, 8);
+function histStats(id, city) { return statsOf(histPts(id, city, 8)); }
+function statsOf(pts) {
   if (pts.length < 2) return null;
   const full = pts.length > 3 ? pts.slice(0, -1) : pts; // последний день обычно неполный
   const vol = full.reduce((s, d) => s + d.c, 0) / full.length;
   const pct = (q) => { const s = [...pts].sort((a, b) => a.p - b.p); const tot = s.reduce((a, d) => a + d.c, 0); let acc = 0; for (const d of s) { acc += d.c; if (acc >= tot * q) return d.p; } return s[s.length - 1].p; };
   return { med: pct(0.5), p20: pct(0.2), p80: pct(0.8), vol };
+}
+// обычная цена предмета: сделки за неделю в этом городе, а если там их мало — во всех городах
+function refStats(id, city) {
+  const hs = histStats(id, city);
+  if (hs && hs.vol >= MIN_VOL) return hs;
+  return statsOf(activeCities().flatMap((c) => histPts(id, c, 8)).sort((a, b) => a.t - b.t));
+}
+// ордер на закупку сильно ниже обычной цены никто не исполнит, а лот сильно выше — никто не купит
+const ORDER_MIN = 0.6, LOT_MAX = 1.3;
+function oddPrice(id, city, side, p) {
+  const ref = refStats(id, city); if (!ref) return null;
+  if (side === "buy" && p < ref.med * ORDER_MIN) return ref;
+  if (side === "sell" && p > ref.p80 * LOT_MAX) return ref;
+  return null;
 }
 function liveOf(id, city, side) {
   const rec = cur[`${S.settings.server}|${id}`]; const r = rec && rec.cities[city];
@@ -262,7 +276,7 @@ const orderFee = () => 1 + SETUP * (1 + relists());
 function buyIn(id, city) {
   if (S.settings.order && S.settings.mode !== "hist") {
     const b = liveOf(id, city, "buy");
-    if (b && b.age <= maxAge()) { const hs = histStats(id, city); return { price: b.p + 1, city, src: "order", age: b.age, vol: hs ? hs.vol : NaN, fee: orderFee() }; }
+    if (b && b.age <= maxAge() && !oddPrice(id, city, "buy", b.p)) { const hs = histStats(id, city); return { price: b.p + 1, city, src: "order", age: b.age, vol: hs ? hs.vol : NaN, fee: orderFee() }; }
   }
   const o = lotIn(id, city);
   return o && { ...o, fee: 1 };
@@ -530,9 +544,11 @@ function cityQuotes(id, cities) {
   const q = {};
   for (const c of cities) {
     const s = liveOf(id, c, "sell"), b = liveOf(id, c, "buy");
+    if (s) { const r = oddPrice(id, c, "sell", s.p); if (r) { s.odd = true; s.ref = r.med; } }
+    if (b) { const r = oddPrice(id, c, "buy", b.p); if (r) { b.odd = true; b.ref = r.med; } }
     q[c] = { s, b };
-    if (s && s.age <= maxAge()) { minSell = Math.min(minSell, s.p); maxSell = Math.max(maxSell, s.p); }
-    if (b && b.age <= maxAge()) { minBuy = Math.min(minBuy, b.p); maxBuy = Math.max(maxBuy, b.p); }
+    if (s && !s.odd && s.age <= maxAge()) { minSell = Math.min(minSell, s.p); maxSell = Math.max(maxSell, s.p); }
+    if (b && !b.odd && b.age <= maxAge()) { minBuy = Math.min(minBuy, b.p); maxBuy = Math.max(maxBuy, b.p); }
   }
   // «сразу»: купить по самому дешёвому лоту, продать в самый дорогой ордер;
   // «своим ордером»: купить ордером там, где ордера дешевле всего, продать лотом там, где лоты дороже всего
@@ -542,6 +558,7 @@ function cityQuotes(id, cities) {
 // для зачарованного камня div = 2/4/8: при наведении видно цену в пересчёте на обычный
 function pv(o, kind, best, div = 1) {
   if (!o) return `<span class="pv none">—</span>`;
+  if (o.odd) return `<span class="pv odd" title="Не похоже на реальную цену: обычно здесь торгуют около ${fmt(o.ref)}. В расчётах не учитывается">${fmt(o.p)}</span>`;
   return `<span class="pv${best ? ` best-${kind}` : ""}"${div > 1 ? ` title="как .0: ${fmt(o.p / div)}"` : ""}>${fmt(o.p)}</span>`;
 }
 const stoneDiv = (info) => (info && FAM[info.f].stone && info.kind === "raw" && info.e ? calcSettings(info.f).mult[info.e - 1] || 1 : 1);
@@ -608,8 +625,8 @@ function renderPricesWidgets() {
   for (const c of cities) {
     const s = q[c].s, b = q[c].b;
     const buySide = order ? b : s, sellSide = order ? s : b;
-    if (buySide && buySide.age <= maxAge() && (!lo || buySide.p < lo.p)) lo = { ...buySide, city: c };
-    if (sellSide && sellSide.age <= maxAge() && (!hi || sellSide.p > hi.p)) hi = { ...sellSide, city: c };
+    if (buySide && !buySide.odd && buySide.age <= maxAge() && (!lo || buySide.p < lo.p)) lo = { ...buySide, city: c };
+    if (sellSide && !sellSide.odd && sellSide.age <= maxAge() && (!hi || sellSide.p > hi.p)) hi = { ...sellSide, city: c };
   }
   const ser = series7(id);
   const dv = stoneDiv(info);
@@ -636,9 +653,12 @@ function routesFor(id) {
   for (const a of cities) for (const b of cities) {
     if (a === b) continue;
     const sa = q[a].s, sb = q[b].s;
-    if (!sa || !sb || sa.age > maxAge() || sb.age > maxAge()) continue;
-    const net = sb.p * (1 - fee) - sa.p, hs = histStats(id, b);
-    out.push({ id, a, b, buy: sa.p, sell: sb.p, net, pct: net / sa.p, vol: hs ? hs.vol : NaN });
+    if (!sa || !sb || sa.odd || sb.odd || sa.age > maxAge() || sb.age > maxAge()) continue;
+    const hs = histStats(id, b), ref = refStats(id, b);
+    if (oddPrice(id, a, "buy", sa.p) && sa.p < (ref ? ref.med : 0) * 0.5) continue; // подозрительно дешёвый лот — скорее всего, пара штук
+    const sell = ref ? Math.min(sb.p, ref.p80) : sb.p; // как в «Переработке»: продажа не дороже P80 за неделю
+    const net = sell * (1 - fee) - sa.p;
+    out.push({ id, a, b, buy: sa.p, sell, net, pct: net / sa.p, vol: hs ? hs.vol : NaN, capped: sell < sb.p });
   }
   return out.sort((x, y) => y.pct - x.pct);
 }
@@ -692,7 +712,7 @@ async function openPrices(force = false) {
   renderPricesControls(); renderPricesTable();
   await openSelected();
   await ensure(ids, { history: true });
-  if (S.view === "prices") renderPricesWidgets();
+  if (S.view === "prices") { renderPricesTable(); renderPricesWidgets(); } // с историей видно, какие цены нереальные
 }
 
 // ---------- вкладка «Переработка» ----------
