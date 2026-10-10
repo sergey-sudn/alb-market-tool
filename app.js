@@ -70,14 +70,14 @@ const S = {
   settings: { ...DEF, m: [...DEF.m] },
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pItem: null,
-  rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin",
+  rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1,
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -796,12 +796,40 @@ function renderRefineWidgets(all) {
       ${line(`Продай ${esc(lc1(itemLabel(b.id)))}`, b.sell, fmt(b.sell.price))}
       <div class="b-line"><span class="b-lbl">Прибыль за стак 999</span><span class="b-where"><span class="liq ${liq.cls}" title="${esc(liq.txt)}">${isFinite(b.sell.vol) ? "продаётся " + nf0.format(b.sell.vol) + " в день" : "объём продаж неизвестен"}</span></span><b class="b-val pos">${fmtBig(b.profit * STACK)}</b></div>
     </div>${[lowNote(b.raw, rawId(b.f, b.t, stoneK(b) || b.e)), lowNote(b.prev, matId(b.f, b.t - 1, b.e))].filter(Boolean).map((t) => `<p class="k" style="margin:0;color:var(--warn)">Осторожно: ${esc(t)}</p>`).join("")}</div>`;
-  const list = (title, rows, val, sub) => `<div class="panel widget"><span class="k">${title}</span><div class="tl">${rows.slice(0, 3).map((r) =>
-    `<button type="button" class="tl-row" data-f="${r.f}" data-t="${r.t}">${icon(r.id, 38)}<span class="tl-name">${esc(itemLabel(r.id))}</span><span class="tl-v"><b class="pos">${val(r)}</b><span class="age">${sub(r)}</span></span></button>`).join("")}</div></div>`;
-  h += list("Лучшие по марже", byMargin, (r) => nf0.format(r.margin * 100) + "%", (r) => fmtBig(r.profit * STACK));
-  h += list("Больше всего за стак", byStack, (r) => fmtBig(r.profit * STACK), (r) => "маржа " + nf0.format(r.margin * 100) + "%");
+  const tops = {
+    margin: { rows: byMargin, val: (r) => nf0.format(r.margin * 100) + "%", sub: (r) => fmtBig(r.profit * STACK) + " за стак" },
+    stack: { rows: byStack, val: (r) => fmtBig(r.profit * STACK), sub: (r) => "маржа " + nf0.format(r.margin * 100) + "%" },
+    focus: { rows: all.map((r) => ({ r, f: focusInfo(r) })).filter((x) => x.f && x.f.profit > 0).sort((a, b) => b.f.perPoint - a.f.perPoint).map((x) => ({ ...x.r, fi: x.f })),
+      val: (r) => `${fmt(r.fi.perPoint)} за очко`, sub: (r) => `${fmtBig(r.fi.profit * STACK)} за стак с фокусом` },
+  };
+  const tp = tops[S.rTop] ? S.rTop : "margin", cur = tops[tp];
+  const already = S.settings.rrr === "0.539" || S.settings.rrr === "0.435";
+  h += `<div class="panel widget span2 tops"><div class="w-head"><div class="seg" role="group" aria-label="Список">${[["margin", "По марже"], ["stack", "За стак"], ["focus", "На фокус"]].map(([v, l]) => `<button type="button" data-top="${v}" aria-pressed="${v === tp}">${l}</button>`).join("")}</div>`
+    + `<span class="k">${tp === "focus" ? "серебра на 1 очко фокуса, без учёта специализации" : ""}</span></div>`
+    + (tp === "focus" && already ? `<p class="w-empty">В «Условиях» уже выбран возврат с фокусом. Чтобы сравнить, выбери возврат без фокуса: тогда видно, сколько добавляет фокус.</p>`
+      : !cur.rows.length ? `<p class="w-empty">Пока нечего показать.</p>`
+      : `<div class="tl">${cur.rows.slice(0, 5).map((r) => `<button type="button" class="tl-row" data-key="${rowKey(r)}">${icon(r.id, 38)}<span class="tl-name">${esc(itemLabel(r.id))}</span><span class="tl-v"><b class="pos">${cur.val(r)}</b><span class="age">${cur.sub(r)}</span></span></button>`).join("")}</div>`)
+    + `</div>`;
   box.innerHTML = h;
-  box.querySelectorAll(".tl-row").forEach((el) => el.addEventListener("click", () => goCalc(el.dataset.f, +el.dataset.t)));
+  box.querySelectorAll("[data-top]").forEach((b) => b.addEventListener("click", () => { S.rTop = b.dataset.top; save(); renderRefineWidgets(all); }));
+  box.querySelectorAll(".tl-row").forEach((el) => el.addEventListener("click", () => openRow(el.dataset.key)));
+}
+// раскрыть строку таблицы и прокрутить к ней
+function openRow(key) {
+  rOpen.add(key); renderRefine();
+  const el = document.querySelector(`${isMobile() ? "#r-cards .card" : "#r-table tr.rrow"}[data-key="${key}"]`);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+// фокус: сколько серебра даёт 1 очко. Фокус поднимает бонус производства на 59%;
+// очки тратятся на каждый крафт, включая перекрафт возврата, поэтому на 1 шт. выхода уходит F / (шт. за крафт)
+const FOCUS = { 3: 31, 4: 54, 5: 94, 6: 164, 7: 287, 8: 503, 9: 880, 10: 1539, 11: 2694 };
+function focusInfo(r) {
+  if (!r.ok) return null;
+  const c = r.c, pb = 1 / c.k - 1, kf = 1 / (1 + pb + 0.59);
+  const inputs = N[r.t] * r.raw.paid + r.prev.paid, m = stoneMult(r);
+  const F = FOCUS[FAM[r.f].stone ? r.t : r.t + r.e] || 0, perOut = F / m;
+  const costF = inputs * kf + c.station, gain = inputs * (c.k - kf);
+  return { kf, rf: 1 - kf, costF, profit: r.effSell - costF, gain, perOut, perPoint: perOut ? gain / perOut : NaN, stackFocus: perOut * STACK };
 }
 function goCalc(f, t) {
   S.cFam = f; if (!S.cTiers.includes(t)) S.cTiers = toggleIn(S.cTiers, t, REFINE_TIERS);
@@ -848,10 +876,10 @@ function detHtml(r) {
   const k = stoneK(r), m = stoneMult(r), rawName = itemLabel(rawId(r.f, r.t, k || r.e)), prevName = itemLabel(matId(r.f, r.t - 1, r.e));
   let h = `<div class="det-grid">`;
   h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>`
-    + kv(`${esc(rawName)} ×${N[r.t]}`, r.raw ? `${fmt(r.raw.unit)}${k ? ` <span class="eq">(.0 — ${fmt(r.raw.price)})</span>` : ""}` : "нет цены")
+    + kv(lnk(rawId(r.f, r.t, k || r.e), `${esc(rawName)} ×${N[r.t]}`), r.raw ? `${fmt(r.raw.unit)}${k ? ` <span class="eq">(.0 — ${fmt(r.raw.price)})</span>` : ""}` : "нет цены")
     + (r.raw ? `<p class="dn">${metaLine(r.raw)}</p>` : "")
     + (FAM[r.f].stone ? `<div class="vars" title="Цена за штуку, в скобках — в пересчёте на обычный камень: зачарованный даёт в 2/4/8 раз больше блоков">${stoneVariants(r)}</div>` : "")
-    + kv(`${esc(prevName)} ×${nf1.format(m)}`, r.prev ? fmt(r.prev.price) : "нет цены")
+    + kv(lnk(matId(r.f, r.t - 1, r.e), `${esc(prevName)} ×${nf1.format(m)}`), r.prev ? fmt(r.prev.price) : "нет цены")
     + (r.prev ? `<p class="dn">${metaLine(r.prev)}</p>` : "")
     + (r.own ? `<div class="own-box"><div class="dl"><span>Сделать самому</span><b class="pos">${fmt(r.own.cost)} <span class="eq">(−${nf0.format(r.own.save * 100)}%)</span></b></div><p class="dn">${esc(itemLabel(rawId(r.f, r.t - 1, stoneK({ ...r, raw: r.own.raw }) || r.e)))} ×${N[r.t - 1]} по ${fmt(r.own.raw.unit)} + ${esc(itemLabel(matId(r.f, r.t - 2, r.e)))} ×${nf1.format(stoneMult({ ...r, raw: r.own.raw }))} по ${fmt(r.own.prev.price)}, с возвратом</p></div>` : "")
     + kv("На выходе", `${nf1.format(m)} шт.`) + `</div>`;
@@ -864,18 +892,20 @@ function detHtml(r) {
       + (c.station ? kv("Станция", fmt(c.station)) : "")
       + kv("Итого", fmt(r.cost)) + `</div>`;
     h += `<div class="det-b"><h4>Продажа</h4>`
-      + kv("Цена", fmt(r.sell.price))
+      + kv(lnk(r.id, "Цена"), fmt(r.sell.price))
       + `<p class="dn">${metaLine(r.sell, false)}</p>`
       + kv(`Минус уценка ${fmtPct(c.buf)} и ${relists() ? "налог со сборами" : "налог"} ${fmtPct(c.fee)}`, fmt(r.effSell))
       + kv(`${liqDot(r.sell.vol)} Продаётся в день`, isFinite(r.sell.vol) ? `~${nf0.format(r.sell.vol)}` : "неизвестно")
       + `<p class="dn">${esc(liquidity(r.sell.vol).txt)}</p></div>`;
     const cls = r.profit >= 0 ? "pos" : "neg";
+    h += whereSell(r) + shopList(r);
     h += `<div class="det-b"><h4>Деньги</h4>`
       + kv("Прибыль за 1 шт.", fmtSigned(r.profit), cls)
       + kv("Прибыль за стак 999", fmtBig(r.profit * STACK), cls)
       + kv("Маржа", nf0.format(r.margin * 100) + "%", cls)
       + kv("Вложить на стак", fmtBig(r.capital, false))
       + (r.own ? kv("Если тир ниже сделать самому", fmtBig(r.own.profit * STACK) + " за стак", "pos") : "")
+      + focusKv(r)
       + `<button class="btn primary" type="button" data-calc="${r.f}" data-t="${r.t}">Открыть в «Порогах»</button></div>`;
   } else {
     h += `<div class="det-b"><h4>Не хватает цен</h4><p class="dn">Нет свежих цен на ${[!r.raw && "сырьё", !r.prev && "материал тира ниже", !r.sell && "продажу"].filter(Boolean).join(", ")}. Попробуй обновить цены или выбрать другие города в «Условиях».</p>`
@@ -936,8 +966,61 @@ function renderRefine() {
   });
   bindCalcBtns(tbl); bindCalcBtns(cards);
 }
+// ссылка из деталей на вкладку «Цены» с этим предметом
+const lnk = (id, text) => `<button type="button" class="lnk" data-goprice="${esc(id)}" title="Открыть в «Ценах»">${text}</button>`;
+function goPrices(id) {
+  const p = parseId(id); if (!p) return;
+  S.pFams = [p.f]; if (!S.pTiers.includes(p.t)) S.pTiers = toggleIn(S.pTiers, p.t, ALL_TIERS);
+  if (!S.pEnchs.includes(p.e)) S.pEnchs = toggleIn(S.pEnchs, p.e, [0, 1, 2, 3]);
+  S.pKind = "all"; S.pItem = id; arbItem = id; save(); location.hash = "prices";
+}
+// где продать: цена и объём во всех городах, прибыль с 1 шт. при такой цене
+function whereSell(r) {
+  if (!r.ok) return "";
+  const rows = activeCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
+  const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
+  return `<div class="det-b"><h4>Где продать</h4>${rows.map(({ c, o }) => `<div class="dl ws${c === r.sell.city ? " on" : ""}"><span>${cityHtml(c)}</span><span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)}` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
+    <p class="dn">Сколько продаётся в день, цена и прибыль с 1 шт. при продаже в этом городе</p></div>`;
+}
+// закупочный лист на N стаков на выходе
+function shopList(r) {
+  if (!r.ok) return "";
+  const n = Math.max(1, num(S.shopStacks) || 1), m = stoneMult(r), k = stoneK(r);
+  const sets = (n * STACK * r.c.k) / m; // крафтов на закупленное (остальное — перекрафт возврата)
+  const rawQ = Math.ceil(sets * N[r.t]), prevQ = Math.ceil(sets * m);
+  const line = (id, q, o) => `${itemLabel(id)} — ${nf0.format(q)} шт., ${o.src === "order" ? "ордер" : "лот"} ${fmt(o.src === "order" ? o.price : o.price)} в ${o.city}`;
+  const rawIdK = rawId(r.f, r.t, k || r.e), total = rawQ * r.raw.unit * (r.raw.fee || 1) + prevQ * r.prev.price * (r.prev.fee || 1);
+  const text = `${itemLabel(r.id)} ×${nf0.format(n * STACK)}:\n• ${line(rawIdK, rawQ, { ...r.raw, price: r.raw.unit })}\n• ${line(matId(r.f, r.t - 1, r.e), prevQ, r.prev)}\nИтого ~${fmtBig(total, false)} серебра`;
+  return `<div class="det-b shop"><h4>Закупочный лист</h4>
+    <label class="dl"><span>Стаков на выходе</span><input type="number" class="shop-n" min="1" step="1" inputmode="numeric" value="${n}"></label>
+    <div class="dl"><span>${lnk(rawIdK, esc(itemLabel(rawIdK)))}</span><b>${nf0.format(rawQ)} шт.</b></div>
+    <div class="dl"><span>${lnk(matId(r.f, r.t - 1, r.e), esc(itemLabel(matId(r.f, r.t - 1, r.e))))}</span><b>${nf0.format(prevQ)} шт.</b></div>
+    <div class="dl"><span>Нужно серебра</span><b>~${fmtBig(total, false)}</b></div>
+    <p class="dn">С учётом перекрафта возврата: закупаешь меньше, чем ${nf0.format(n * STACK)} шт. на выходе</p>
+    <button class="btn ghost" type="button" data-copy="${esc(text)}">Скопировать список</button></div>`;
+}
+function focusKv(r) {
+  const f = focusInfo(r); if (!f) return "";
+  if (S.settings.rrr === "0.539" || S.settings.rrr === "0.435") return "";
+  return `<div class="dl"><span>С фокусом (возврат ${fmtPct(f.rf)})</span><b class="${f.profit >= 0 ? "pos" : "neg"}">${fmtBig(f.profit * STACK)} за стак</b></div>`
+    + `<p class="dn">Фокуса на стак ~${nf0.format(f.stackFocus)} без специализации, ${fmt(f.perPoint)} серебра за очко</p>`;
+}
+// обработчики внутри раскрытых деталей
+function bindDet(root) {
+  root.querySelectorAll("[data-goprice]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); goPrices(b.dataset.goprice); }));
+  root.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(b.dataset.copy); toast("Список скопирован"); } catch (err) { window.prompt("Скопируй список:", b.dataset.copy); }
+  }));
+  root.querySelectorAll(".shop-n").forEach((inp) => {
+    inp.addEventListener("click", (e) => e.stopPropagation());
+    inp.addEventListener("keydown", (e) => e.stopPropagation());
+    inp.addEventListener("change", () => { S.shopStacks = Math.max(1, num(inp.value) || 1); save(); renderRefine(); });
+  });
+}
 function bindCalcBtns(root) {
   root.querySelectorAll("[data-calc]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); goCalc(b.dataset.calc, +b.dataset.t); }));
+  bindDet(root);
 }
 async function openRefine(force = false) {
   renderRefineControls(); renderRefine();
