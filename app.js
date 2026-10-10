@@ -64,7 +64,7 @@ const KEY = "alb-market-tool-v1", JKEY = "alb-market-tool-journal", TKEY = "alb-
 const DEF = {
   server: "europe", caerleon: false, brecilien: false, mode: "safe", age: 24,
   rrr: "0.367", rrrc: 36.7, fee: "0.065", station: 0, margin: 10, buffer: 5, order: true, m: [2, 4, 8],
-  bonusFam: "", bonusPct: 10,
+  bonusFam: "", bonusPct: 10, relist: 0,
 };
 const S = {
   settings: { ...DEF, m: [...DEF.m] },
@@ -255,11 +255,14 @@ function activeCities() { return CITIES.filter((c) => (c !== "Caerleon" || S.set
 const maxAge = () => num(S.settings.age) || 24;
 // Сколько стоит купить 1 шт. в городе. Своим ордером — лучший ордер на закупку +1 и комиссия 2,5%;
 // если ордеров нет — по самому дешёвому лоту, без комиссии
-const ORDER_FEE = 1.025;
+// каждое перевыставление ордера или лота — ещё 2,5% сбора за выставление
+const SETUP = 0.025;
+const relists = () => Math.max(0, num(S.settings.relist) || 0);
+const orderFee = () => 1 + SETUP * (1 + relists());
 function buyIn(id, city) {
   if (S.settings.order && S.settings.mode !== "hist") {
     const b = liveOf(id, city, "buy");
-    if (b && b.age <= maxAge()) { const hs = histStats(id, city); return { price: b.p + 1, city, src: "order", age: b.age, vol: hs ? hs.vol : NaN, fee: ORDER_FEE }; }
+    if (b && b.age <= maxAge()) { const hs = histStats(id, city); return { price: b.p + 1, city, src: "order", age: b.age, vol: hs ? hs.vol : NaN, fee: orderFee() }; }
   }
   const o = lotIn(id, city);
   return o && { ...o, fee: 1 };
@@ -345,8 +348,9 @@ function calcSettings(f) {
   const bonus = !!(f && st.bonusFam === f);
   if (bonus) { const pb = 1 / (1 - r) - 1 + (num(st.bonusPct) || 0) / 100; r = 1 - 1 / (1 + pb); }
   return {
-    k: 1 - r, r, bonus, fee: +st.fee, station: num(st.station) || 0, m: (num(st.margin) || 0) / 100,
-    buf: (num(st.buffer) || 0) / 100, bf: st.order ? 1.025 : 1, mult: st.m.map((x) => num(x) || 1),
+    // перевыставления дорожают только для своих лотов (налог 6,5% / 10,5%), продажа в чужой ордер их не требует
+    k: 1 - r, r, bonus, fee: +st.fee + ([0.065, 0.105].includes(+st.fee) ? SETUP * relists() : 0), station: num(st.station) || 0, m: (num(st.margin) || 0) / 100,
+    buf: (num(st.buffer) || 0) / 100, bf: st.order ? orderFee() : 1, mult: st.m.map((x) => num(x) || 1),
   };
 }
 function economics(t, raw, prevEff, sell, c) {
@@ -585,7 +589,7 @@ function renderPricesTable() {
   rowNav(tbl, "tbody tr[data-id]", pick);
   rowNav(cards, ".card[data-id]", pick);
 }
-function listingFee() { const f = +S.settings.fee; return f === 0.04 ? 0.065 : f === 0.08 ? 0.105 : f; }
+function listingFee() { const f = +S.settings.fee; return (f === 0.04 ? 0.065 : f === 0.08 ? 0.105 : f) + SETUP * relists(); }
 function renderPricesWidgets() {
   const box = $("p-widgets"), id = S.pItem;
   if (!id || !pricesIds().includes(id)) { box.innerHTML = `<div class="panel widget span2"><p class="w-empty">Выбери строку в таблице, чтобы увидеть лучшие цены и перепродажу между городами.</p></div>`; return; }
@@ -818,7 +822,7 @@ function detHtml(r) {
     h += `<div class="det-b"><h4>Продажа</h4>`
       + kv("Цена", fmt(r.sell.price))
       + `<p class="dn">${metaLine(r.sell, false)}</p>`
-      + kv(`Минус уценка ${fmtPct(c.buf)} и налог ${fmtPct(c.fee)}`, fmt(r.effSell))
+      + kv(`Минус уценка ${fmtPct(c.buf)} и ${relists() ? "налог со сборами" : "налог"} ${fmtPct(c.fee)}`, fmt(r.effSell))
       + kv(`${liqDot(r.sell.vol)} Продаётся в день`, isFinite(r.sell.vol) ? `~${nf0.format(r.sell.vol)}` : "неизвестно")
       + `<p class="dn">${esc(liquidity(r.sell.vol).txt)}</p></div>`;
     const cls = r.profit >= 0 ? "pos" : "neg";
@@ -1349,7 +1353,7 @@ function setTheme(t) {
 function sumHint() {
   const c = calcSettings(), st = S.settings;
   const rp = nf1.format((st.rrr === "custom" ? num(st.rrrc) || 0 : +st.rrr * 100));
-  $("sumhint").textContent = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%, закупка ${st.order ? "ордером" : "сразу"}${st.bonusFam ? `, бонус: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
+  $("sumhint").textContent = `Условия: возврат ${rp}%, маржа ${nf1.format(c.m * 100)}%, закупка ${st.order ? "ордером" : "сразу"}${relists() ? `, перевыставлений ${nf1.format(relists())}` : ""}${st.bonusFam ? `, бонус: ${FAM[st.bonusFam].tab.toLowerCase()} +${st.bonusPct}%` : ""}`;
   $("s-rrrc").hidden = st.rrr !== "custom";
   const k = calcSettings().k;
   $("s-rrr-hint").textContent = k > 0 && k < 1 ? `С перекрафтом возврата из сырья на 1000 крафтов выйдет ~${nf0.format(1000 / k)} шт. (+${nf0.format((1 / k - 1) * 100)}%): вернувшиеся ресурсы снова идут в переработку, и так до конца.` : "";
@@ -1367,13 +1371,13 @@ function bindSettings() {
   $("s-server").value = st.server; $("s-caerleon").checked = !!st.caerleon; $("s-brecilien").checked = !!st.brecilien;
   $("s-mode").value = st.mode; $("s-age").value = st.age;
   $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-station").value = st.station;
-  $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-buy").value = st.order ? "order" : "now";
+  $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-relist").value = st.relist ?? 0; $("s-buy").value = st.order ? "order" : "now";
   $("s-bfam").value = st.bonusFam || ""; $("s-bpct").value = String(st.bonusPct || 10);
   ["s-m1", "s-m2", "s-m3"].forEach((id, i) => ($(id).value = st.m[i]));
   const on = (id, fn, ev = "input") => $(id).addEventListener(ev, (e) => { fn(e.target); save(); rerenderAll(); });
   on("s-rrr", (el) => (st.rrr = el.value), "change"); on("s-rrrc", (el) => (st.rrrc = el.value));
   on("s-fee", (el) => (st.fee = el.value), "change"); on("s-station", (el) => (st.station = el.value));
-  on("s-margin", (el) => (st.margin = el.value)); on("s-buffer", (el) => (st.buffer = el.value));
+  on("s-margin", (el) => (st.margin = el.value)); on("s-buffer", (el) => (st.buffer = el.value)); on("s-relist", (el) => (st.relist = el.value));
   on("s-buy", (el) => (st.order = el.value === "order"), "change"); on("s-age", (el) => (st.age = el.value));
   on("s-mode", (el) => (st.mode = el.value), "change");
   on("s-bfam", (el) => (st.bonusFam = el.value), "change"); on("s-bpct", (el) => (st.bonusPct = +el.value), "change");
