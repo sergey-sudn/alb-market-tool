@@ -565,13 +565,13 @@ const stoneDiv = (info) => (info && FAM[info.f].stone && info.kind === "raw" && 
 const pa = (o) => o ? `<span class="pa${o.age > maxAge() ? " old" : ""}">${fmtAge(o.age)}</span>` : `<span class="pa"></span>`;
 function renderPricesTable() {
   const groups = pricesGroups(), cities = activeCities(), tbl = $("p-table"), cards = $("p-cards");
-  let h = `<thead><tr><th scope="col">Ресурс</th>${cities.map((c) => `<th scope="col" class="cityh" style="color:${CITY_COLOR[c]}">${c}</th>`).join("")}</tr></thead><tbody>`;
+  let h = `<thead><tr><th scope="col">Ресурс</th><th class="tagcol"></th>${cities.map((c) => `<th scope="col" class="cityh" style="color:${CITY_COLOR[c]}">${c}</th>`).join("")}</tr></thead><tbody>`;
   let m = "", any = false;
   for (const g of groups) {
     if (!g.ids.length) continue;
     any = true;
     if (groups.length > 1) {
-      h += `<tr class="group"><td colspan="${cities.length + 1}">${FAM[g.f].tab}<span>бонусный город: ${FAM[g.f].city}</span></td></tr>`;
+      h += `<tr class="group"><td colspan="${cities.length + 2}">${FAM[g.f].tab}<span>бонусный город: ${FAM[g.f].city}</span></td></tr>`;
       m += `<div class="k">${FAM[g.f].tab} · бонусный город ${FAM[g.f].city}</div>`;
     }
     for (const id of g.ids) {
@@ -580,14 +580,14 @@ function renderPricesTable() {
       const sel = id === S.pItem ? " sel" : "";
       const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small></div></div>`;
       const dv = stoneDiv(info);
-      h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td>`;
+      h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td><td class="tagcol"><div class="tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></div></td>`;
       m += `<section class="panel card${sel}" tabindex="0" data-id="${esc(id)}"><div class="card-h">${head.replace('<div class="item">', "").replace(/<\/div>$/, "")}</div>`
         + (rec ? `<div class="m-city m-headrow"><span></span><span class="ptag s">продают</span><span class="ptag b">покупают</span></div>` : "");
       for (const c of cities) {
         const { s, b } = q[c];
         if (!rec) { h += `<td><span class="empty">…</span></td>`; continue; }
         const bs = s && s.p === bestS && s.age <= maxAge(), bb = b && b.p === bestB && b.age <= maxAge();
-        h += `<td><div class="cell"><span class="ptag s">продают</span>${pv(s, "s", bs, dv)}${pa(s)}<span class="ptag b">покупают</span>${pv(b, "b", bb, dv)}${pa(b)}</div></td>`;
+        h += `<td><div class="cell">${pv(s, "s", bs, dv)}${pa(s)}${pv(b, "b", bb, dv)}${pa(b)}</div></td>`;
         if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv)}${pa(b)}</span></div>`;
       }
       if (!rec) m += `<div class="m-line"><span class="k">Загружаю…</span></div>`;
@@ -597,7 +597,7 @@ function renderPricesTable() {
   }
   if (!any) {
     const msg = "Для такого фильтра предметов нет. Зачарованные ресурсы бывают только с T4, у камня нет зачарованных блоков.";
-    h += `<tr><td class="msg" colspan="${cities.length + 1}">${msg}</td></tr>`;
+    h += `<tr><td class="msg" colspan="${cities.length + 2}">${msg}</td></tr>`;
     m = `<div class="panel card"><span class="k">${msg}</span></div>`;
   }
   tbl.innerHTML = h + "</tbody>";

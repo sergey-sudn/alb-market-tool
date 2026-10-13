@@ -226,7 +226,10 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
 .grid td.msg{text-align:center;color:var(--muted);padding:32px;white-space:normal}
 .grid th.cityh{font-size:15px;font-weight:700}
 
-.cell{display:inline-grid;grid-template-columns:64px 64px 30px;column-gap:6px;row-gap:6px;align-items:center}
+.cell{display:inline-grid;grid-template-columns:auto 30px;column-gap:6px;row-gap:6px;align-items:center;justify-items:end}
+.prices .tagcol{padding-left:0;padding-right:4px;width:1%}
+.tags{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.tags .ptag{padding:4px 8px}
 .ptag{display:inline-block;font-size:11px;font-weight:600;line-height:1;padding:4px 8px;border-radius:7px;text-align:center;white-space:nowrap}
 .cell .ptag{padding:4px 0}
 .ptag.s{background:var(--bad-bg);color:var(--bad)} .ptag.b{background:var(--good-bg);color:var(--good)}
@@ -542,3 +545,16 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .lim.mid .v,.lim.mid .cmp{color:var(--warn)}
 .bandbar .bb{width:2px;margin-left:-1px;top:-3px;height:16px;background:var(--muted);opacity:.8}
 .band-v.pos{color:var(--good)} .band-v.neg{color:var(--bad)}
+/* «Цены» на ноутбуках: компактнее, чтобы влезли все 7 городов */
+@media (max-width:1240px){
+  .prices .iname small{display:none}
+  .prices .iname b{white-space:normal;max-width:150px;display:block}
+  .grid.prices th,.grid.prices td{padding-left:6px;padding-right:6px}
+  .grid.prices th.cityh{font-size:13px}
+  .prices .cell{grid-template-columns:auto 26px;column-gap:4px}
+}
+@media (min-width:761px) and (max-width:960px){
+  #view-prices .tablebox{display:none}
+  #p-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+  #p-cards>.k{grid-column:1/-1}
+}
