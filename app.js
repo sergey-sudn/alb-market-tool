@@ -1117,22 +1117,35 @@ async function marketFill(mode = "hist") {
   btns.forEach((b) => (b.disabled = false));
 }
 // коридор обычных цен: полоса P20–P80, отметка медианы, твоя цена (точка) и порог (черта)
-function renderBand(kind, t, cur, thr) {
+function renderBand(kind, t, cur, thr, be) {
   const el = $(`B-${kind}-${t}`); if (!el) return;
   const x = typicalOf(S.cFam, t, kind);
   if (!x) { el.innerHTML = `<span class="band-t">мало сделок за неделю — обычную цену не посчитать</span>`; return; }
-  const vals = [x.p20, x.p80, x.med, cur, thr].filter((v) => isFinite(v) && v > 0);
+  const vals = [x.p20, x.p80, x.med, cur, thr, be].filter((v) => isFinite(v) && v > 0);
   let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.12 || hi * 0.1; lo = Math.max(0, lo - pad); hi += pad;
   const pos = (v) => `${((v - lo) / (hi - lo) * 100).toFixed(1)}%`;
   const buy = kind !== "sell";
+  // вывод: сравниваем обычные цены и с порогом желаемой маржи, и с безубытком
+  const mm = `${nf0.format(calcSettings(S.cFam).m * 100)}%`;
   let verdict = "", vcls = "";
   if (isFinite(thr) && thr > 0) {
-    if (buy) { if (thr >= x.p80) { verdict = "порог выше обычных цен — бери спокойно"; vcls = "pos"; } else if (thr >= x.p20) { verdict = "порог внутри обычных цен — бери не дороже порога"; vcls = "warn"; } else { verdict = "порог ниже обычных цен — сейчас не окупается"; vcls = "neg"; } }
-    else { if (thr <= x.p20) { verdict = "обычно продаётся дороже порога"; vcls = "pos"; } else if (thr <= x.p80) { verdict = "порог внутри обычных цен — продавай не дешевле порога"; vcls = "warn"; } else { verdict = "обычно продаётся дешевле порога — не окупится"; vcls = "neg"; } }
+    if (buy) {
+      if (thr >= x.p80) { verdict = `даже по дорогой обычной цене маржа ≥ ${mm} — бери спокойно`; vcls = "pos"; }
+      else if (thr >= x.p20) { verdict = `бери не дороже порога — тогда маржа ≥ ${mm}`; vcls = "pos"; }
+      else if (isFinite(be) && be >= x.med) { verdict = `по обычной цене в плюсе, но маржа ниже ${mm}`; vcls = "warn"; }
+      else if (isFinite(be) && be >= x.p20) { verdict = `в плюсе только по дешёвой цене, маржа ниже ${mm}`; vcls = "warn"; }
+      else { verdict = "по обычным ценам в минусе"; vcls = "neg"; }
+    } else {
+      if (thr <= x.p20) { verdict = `даже по дешёвой обычной цене маржа ≥ ${mm}`; vcls = "pos"; }
+      else if (thr <= x.p80) { verdict = `продавай не дешевле порога — тогда маржа ≥ ${mm}`; vcls = "pos"; }
+      else if (isFinite(be) && be <= x.med) { verdict = `по обычной цене в плюсе, но маржа ниже ${mm}`; vcls = "warn"; }
+      else if (isFinite(be) && be <= x.p80) { verdict = `в плюсе только по дорогой цене, маржа ниже ${mm}`; vcls = "warn"; }
+      else { verdict = "по обычным ценам в минусе"; vcls = "neg"; }
+    }
   }
-  el.innerHTML = `<div class="bandbar" title="Полоса — обычные цены сделок за 7 дней (20–80% сделок), черта — медиана, ▲ — порог, ● — твоя цена">
+  el.innerHTML = `<div class="bandbar" title="Полоса — обычные цены сделок за 7 дней (20–80% сделок), черта — медиана, цветная метка — порог желаемой маржи, серая — безубыток, ● — твоя цена">
       <i class="bz" style="left:${pos(x.p20)};width:calc(${pos(x.p80)} - ${pos(x.p20)})"></i><i class="bm" style="left:${pos(x.med)}"></i>
-      ${isFinite(thr) && thr > 0 ? `<i class="bt ${vcls}" style="left:${pos(thr)}"></i>` : ""}${isFinite(cur) && cur > 0 ? `<i class="bc" style="left:${pos(cur)}"></i>` : ""}</div>
+      ${isFinite(be) && be > 0 ? `<i class="bb" style="left:${pos(be)}" title="безубыток ${fmt(be)}"></i>` : ""}${isFinite(thr) && thr > 0 ? `<i class="bt ${vcls}" style="left:${pos(thr)}" title="порог маржи ${mm}: ${fmt(thr)}"></i>` : ""}${isFinite(cur) && cur > 0 ? `<i class="bc" style="left:${pos(cur)}"></i>` : ""}</div>
     <span class="band-t">обычно ${fmt(x.p20)}–${fmt(x.p80)}, чаще ~${fmt(x.med)} · ${cityBadge(x.city)} ~${nf0.format(x.vol)} в день</span>
     ${verdict ? `<span class="band-v ${vcls}">${verdict}</span>` : ""}`;
 }
@@ -1196,15 +1209,16 @@ function buildTiers() {
 function setLim(id, val, be, have, kind) {
   const el = $(id); if (!el) return;
   const v = el.querySelector(".v"), b = el.querySelector(".be"), cmp = el.querySelector(".cmp");
-  el.classList.remove("ok", "over");
+  el.classList.remove("ok", "over", "mid");
   if (!isFinite(val)) { v.textContent = "—"; b.textContent = ""; cmp.textContent = ""; return; }
   if (kind !== "sell" && val <= 0) { v.textContent = "не выйдет"; b.textContent = "в минус даже бесплатно"; cmp.textContent = ""; el.classList.add("over"); return; }
   v.textContent = (kind === "sell" ? "≥ " : "≤ ") + fmt(val);
-  b.textContent = "безубыток " + fmt(be);
+  b.textContent = `для маржи ${nf0.format(calcSettings(S.cFam).m * 100)}% · безубыток ${fmt(be)}`;
   if (isFinite(have)) {
     const good = kind === "sell" ? have >= val : have <= val;
-    el.classList.add(good ? "ok" : "over");
-    cmp.textContent = "сейчас " + fmt(have) + (good ? ", подходит" : kind === "sell" ? ", ниже порога" : ", дороже порога");
+    const plus = kind === "sell" ? have >= be : have <= be;
+    el.classList.add(good ? "ok" : plus ? "mid" : "over");
+    cmp.textContent = "сейчас " + fmt(have) + (good ? ", подходит" : plus ? ", в плюсе, но маржа ниже желаемой" : ", в минусе");
   } else cmp.textContent = "";
 }
 let calcState = {};
@@ -1235,9 +1249,9 @@ function updateCalc() {
     if (own) { setLim(`L-prev-${t}`, NaN); pe.querySelector(".v").textContent = "свой крафт"; pe.querySelector(".be").textContent = `себестоимость ${fmt(prevEff)}`; }
     else setLim(`L-prev-${t}`, o.maxPrev(c.m), o.maxPrev(0), num(p.prev), "buy");
     setLim(`L-sell-${t}`, o.minSell(c.m), o.minSell(0), sell, "sell");
-    renderBand("raw", t, raw, o.maxRaw(c.m));
-    renderBand("prev", t, own ? NaN : num(p.prev), own ? NaN : o.maxPrev(c.m));
-    renderBand("sell", t, sell, o.minSell(c.m));
+    renderBand("raw", t, raw, o.maxRaw(c.m), o.maxRaw(0));
+    renderBand("prev", t, own ? NaN : num(p.prev), own ? NaN : o.maxPrev(c.m), own ? NaN : o.maxPrev(0));
+    renderBand("sell", t, sell, o.minSell(c.m), o.minSell(0));
     if (L.stone) {
       const mx = o.maxRaw(c.m);
       $(`E-${t}`).innerHTML = mx > 0 ? `<span>Зачарованный камень, покупай до</span>${[1, 2, 3].map((e) => `<span class="gem ec${e}">T${t}.${e} <b>${fmt(mx * c.mult[e - 1])}</b></span>`).join("")}` : "";

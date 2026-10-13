@@ -539,3 +539,6 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .band-t .cb{min-width:24px;height:18px;font-size:10px}
 .band-v{font-size:12px;font-weight:600}
 .band-v.warn{color:var(--warn)}
+.lim.mid .v,.lim.mid .cmp{color:var(--warn)}
+.bandbar .bb{width:2px;margin-left:-1px;top:-3px;height:16px;background:var(--muted);opacity:.8}
+.band-v.pos{color:var(--good)} .band-v.neg{color:var(--bad)}
