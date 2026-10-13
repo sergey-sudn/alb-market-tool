@@ -1061,10 +1061,46 @@ function calcIds(f) {
   }
   return [...new Set(out)];
 }
-function fillCalcFromMarket(f) {
+// обычные цены по истории сделок за 7 дней: город, где покупают/продают достаточно, и коридор цен
+function typical(id, side) {
+  const list = activeCities().map((c) => ({ c, h: histStats(id, c) })).filter((x) => x.h && x.h.vol >= MIN_VOL);
+  if (!list.length) return null;
+  const maxVol = Math.max(...list.map((x) => x.h.vol));
+  const ok = list.filter((x) => x.h.vol >= maxVol * 0.25); // не берём город, где почти не торгуют
+  ok.sort((x, y) => (side === "buy" ? x.h.med - y.h.med : y.h.med - x.h.med));
+  return { city: ok[0].c, ...ok[0].h };
+}
+// у камня — самый выгодный вариант в пересчёте на обычный
+function typicalRaw(f, t) {
+  if (!FAM[f].stone) { const x = typical(rawId(f, t), "buy"); return x && { ...x, k: 0, unit: x.med }; }
+  const mult = calcSettings(f).mult; let best = null;
+  for (let k = 0; k <= 3; k++) {
+    const x = typical(rawId(f, t, k), "buy"); if (!x) continue;
+    const d = k ? mult[k - 1] : 1;
+    if (!best || x.med / d < best.med) best = { ...x, med: x.med / d, p20: x.p20 / d, p80: x.p80 / d, k, unit: x.med };
+  }
+  return best;
+}
+function typicalOf(f, t, kind) { return kind === "raw" ? typicalRaw(f, t) : kind === "prev" ? typical(matId(f, t - 1), "buy") : typical(matId(f, t), "sell"); }
+function fillCalcFromMarket(f, mode = "live") {
   const P = S.calc[f];
-  const note = (o, extra = "") => o ? `${o.city}${o.age !== undefined ? ", " + fmtAge(o.age) + " назад" : ""}${o.src === "hist" ? ", медиана за 7 дней" : o.src === "cap" ? ", P80 за 7 дней" : ""}${extra}` : "нет цены на рынке";
+  const note = (o, extra = "") => o ? `${o.city}${o.age !== undefined ? ", " + fmtAge(o.age) + " назад" : ""}${o.src === "hist" ? ", медиана за 7 дней" : o.src === "cap" ? ", P80 за 7 дней" : o.src === "order" ? ", свой ордер" : ""}${extra}` : "нет цены на рынке";
+  const tnote = (x, extra = "") => `${x.city}, обычная цена сделок за 7 дней${extra}`;
   for (const t of REFINE_TIERS) {
+    if (mode === "hist") {
+      const raw = typicalRaw(f, t), prev = typical(matId(f, t - 1), "buy"), sell = typical(matId(f, t), "sell");
+      // где сделок мало — берём текущую цену и честно это пишем
+      const lraw = raw ? null : pickRaw(f, t, 0), lprev = prev ? null : pickBuy(matId(f, t - 1)), lsell = sell ? null : pickSell(matId(f, t));
+      P[t].raw = raw ? Math.round(raw.med) : lraw ? Math.round(lraw.price) : null;
+      P[t].prev = prev ? Math.round(prev.med) : lprev ? Math.round(lprev.price) : null;
+      P[t].sell = sell ? Math.round(sell.med) : lsell ? Math.round(lsell.price) : null;
+      P[t].note = {
+        raw: raw ? tnote(raw, raw.k ? `; это камень .${raw.k} по ${fmt(raw.unit)}` : "") : lraw ? "мало сделок, текущая цена: " + note(lraw) : "нет цены",
+        prev: prev ? tnote(prev) : lprev ? "мало сделок, текущая цена: " + note(lprev) : "нет цены",
+        sell: sell ? tnote(sell) : lsell ? "мало сделок, текущая цена: " + note(lsell) : "нет цены",
+      };
+      continue;
+    }
     const raw = pickRaw(f, t, 0), prev = pickBuy(matId(f, t - 1)), sell = pickSell(matId(f, t));
     P[t].raw = raw ? Math.round(raw.price) : null;
     P[t].prev = prev ? Math.round(prev.price) : null;
@@ -1074,11 +1110,31 @@ function fillCalcFromMarket(f) {
   save();
 }
 const calcEmpty = (f) => REFINE_TIERS.every((t) => S.calc[f][t].raw == null && S.calc[f][t].sell == null);
-async function marketFill() {
-  const btn = $("c-fill"); btn.disabled = true;
+async function marketFill(mode = "hist") {
+  const btns = [$("c-fill"), $("c-fill-live")]; btns.forEach((b) => (b.disabled = true));
   await ensure(calcIds(S.cFam), { history: true });
-  fillCalcFromMarket(S.cFam); buildTiers(); updateCalc();
-  btn.disabled = false;
+  fillCalcFromMarket(S.cFam, mode); buildTiers(); updateCalc();
+  btns.forEach((b) => (b.disabled = false));
+}
+// коридор обычных цен: полоса P20–P80, отметка медианы, твоя цена (точка) и порог (черта)
+function renderBand(kind, t, cur, thr) {
+  const el = $(`B-${kind}-${t}`); if (!el) return;
+  const x = typicalOf(S.cFam, t, kind);
+  if (!x) { el.innerHTML = `<span class="band-t">мало сделок за неделю — обычную цену не посчитать</span>`; return; }
+  const vals = [x.p20, x.p80, x.med, cur, thr].filter((v) => isFinite(v) && v > 0);
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.12 || hi * 0.1; lo = Math.max(0, lo - pad); hi += pad;
+  const pos = (v) => `${((v - lo) / (hi - lo) * 100).toFixed(1)}%`;
+  const buy = kind !== "sell";
+  let verdict = "", vcls = "";
+  if (isFinite(thr) && thr > 0) {
+    if (buy) { if (thr >= x.p80) { verdict = "порог выше обычных цен — бери спокойно"; vcls = "pos"; } else if (thr >= x.p20) { verdict = "порог внутри обычных цен — бери не дороже порога"; vcls = "warn"; } else { verdict = "порог ниже обычных цен — сейчас не окупается"; vcls = "neg"; } }
+    else { if (thr <= x.p20) { verdict = "обычно продаётся дороже порога"; vcls = "pos"; } else if (thr <= x.p80) { verdict = "порог внутри обычных цен — продавай не дешевле порога"; vcls = "warn"; } else { verdict = "обычно продаётся дешевле порога — не окупится"; vcls = "neg"; } }
+  }
+  el.innerHTML = `<div class="bandbar" title="Полоса — обычные цены сделок за 7 дней (20–80% сделок), черта — медиана, ▲ — порог, ● — твоя цена">
+      <i class="bz" style="left:${pos(x.p20)};width:calc(${pos(x.p80)} - ${pos(x.p20)})"></i><i class="bm" style="left:${pos(x.med)}"></i>
+      ${isFinite(thr) && thr > 0 ? `<i class="bt ${vcls}" style="left:${pos(thr)}"></i>` : ""}${isFinite(cur) && cur > 0 ? `<i class="bc" style="left:${pos(cur)}"></i>` : ""}</div>
+    <span class="band-t">обычно ${fmt(x.p20)}–${fmt(x.p80)}, чаще ~${fmt(x.med)} · ${cityBadge(x.city)} ~${nf0.format(x.vol)} в день</span>
+    ${verdict ? `<span class="band-v ${vcls}">${verdict}</span>` : ""}`;
 }
 function renderCalcControls() {
   chips($("c-fam"), FAMS.map((f) => [f, FAM[f].tab]), (v) => v === S.cFam, (v) => {
@@ -1099,16 +1155,16 @@ function buildTiers() {
       <div class="tcard-h">${icon(matId(f, t), 56)}<div class="tc-title"><span class="recipe" id="h-${t}">${esc(nm.raw)} ×${N[t]} + ${esc(nm.prev)} → ${esc(nm.mat)}</span></div><span id="pill-${t}"></span></div>
       <div class="trio">
         <div class="field"><div class="lblrow"><label class="lbl-ic" for="raw-${t}">${icon(rawId(f, t), 28, false)}${esc(nm.raw)}, покупка</label></div>
-          <input type="number" id="raw-${t}" min="0" step="1" inputmode="numeric" value="${p.raw ?? ""}"><span class="srcnote" id="n-raw-${t}"></span></div>
+          <input type="number" id="raw-${t}" min="0" step="1" inputmode="numeric" value="${p.raw ?? ""}"><span class="srcnote" id="n-raw-${t}"></span><div class="band" id="B-raw-${t}"></div></div>
         <div class="field"><div class="lblrow"><label class="lbl-ic" for="prev-${t}">${icon(matId(f, t - 1), 28, false)}${esc(nm.prev)}</label>
             <span class="seg" role="group" aria-label="Откуда материал T${t - 1}">
               <button type="button" id="mk-${t}" aria-pressed="${!own}">рынок</button>
               <button type="button" id="ow-${t}" aria-pressed="${own}" ${t === 4 ? 'disabled title="T3 считается только по рынку"' : ""}>свой крафт</button>
             </span></div>
           <input type="number" id="prev-${t}" min="0" step="1" inputmode="numeric" value="${p.prev ?? ""}" ${own ? "hidden" : ""}>
-          <div class="owncost" id="ownc-${t}" ${own ? "" : "hidden"}></div><span class="srcnote" id="n-prev-${t}"></span></div>
+          <div class="owncost" id="ownc-${t}" ${own ? "" : "hidden"}></div><span class="srcnote" id="n-prev-${t}"></span><div class="band" id="B-prev-${t}"></div></div>
         <div class="field"><div class="lblrow"><label class="lbl-ic" for="sell-${t}">${icon(matId(f, t), 28, false)}${esc(nm.mat)}, продажа</label></div>
-          <input type="number" id="sell-${t}" min="0" step="1" inputmode="numeric" value="${p.sell ?? ""}"><span class="srcnote" id="n-sell-${t}"></span></div>
+          <input type="number" id="sell-${t}" min="0" step="1" inputmode="numeric" value="${p.sell ?? ""}"><span class="srcnote" id="n-sell-${t}"></span><div class="band" id="B-sell-${t}"></div></div>
       </div>
       <div class="trio">
         <div class="lim" id="L-raw-${t}"><span class="k">${esc(nm.raw)}: покупай до</span><span class="v"></span><span class="be"></span><span class="cmp"></span></div>
@@ -1170,6 +1226,7 @@ function updateCalc() {
     if (!o) {
       $(`pill-${t}`).innerHTML = `<span class="pill none">заполни цены</span>`;
       for (const k of ["raw", "prev", "sell"]) setLim(`L-${k}-${t}`, NaN);
+      renderBand("raw", t, raw, NaN); renderBand("prev", t, num(p.prev), NaN); renderBand("sell", t, sell, NaN);
       $(`st-${t}`).innerHTML = ""; if (L.stone) $(`E-${t}`).innerHTML = ""; continue;
     }
     $(`pill-${t}`).innerHTML = statusPill(o.margin, o.profit, c.m);
@@ -1178,6 +1235,9 @@ function updateCalc() {
     if (own) { setLim(`L-prev-${t}`, NaN); pe.querySelector(".v").textContent = "свой крафт"; pe.querySelector(".be").textContent = `себестоимость ${fmt(prevEff)}`; }
     else setLim(`L-prev-${t}`, o.maxPrev(c.m), o.maxPrev(0), num(p.prev), "buy");
     setLim(`L-sell-${t}`, o.minSell(c.m), o.minSell(0), sell, "sell");
+    renderBand("raw", t, raw, o.maxRaw(c.m));
+    renderBand("prev", t, own ? NaN : num(p.prev), own ? NaN : o.maxPrev(c.m));
+    renderBand("sell", t, sell, o.minSell(c.m));
     if (L.stone) {
       const mx = o.maxRaw(c.m);
       $(`E-${t}`).innerHTML = mx > 0 ? `<span>Зачарованный камень, покупай до</span>${[1, 2, 3].map((e) => `<span class="gem ec${e}">T${t}.${e} <b>${fmt(mx * c.mult[e - 1])}</b></span>`).join("")}` : "";
@@ -1551,7 +1611,8 @@ function bindSettings() {
   $("r-freset").addEventListener("click", () => { S.rFams = [...FAMS]; S.rTiers = [...REFINE_TIERS]; S.rEnchs = [0]; S.rOnlyPlus = false; S.rSort = "margin"; save(); openRefine(); });
   $("r-onlyplus").addEventListener("change", (e) => { S.rOnlyPlus = e.target.checked; save(); renderRefineControls(); renderRefine(); });
   $("r-sort-m").addEventListener("change", (e) => { S.rSort = e.target.value; save(); renderRefineControls(); renderRefine(); });
-  $("c-fill").addEventListener("click", marketFill);
+  $("c-fill").addEventListener("click", () => marketFill("hist"));
+  $("c-fill-live").addEventListener("click", () => marketFill("live"));
   $("c-reset").addEventListener("click", () => { S.calc[S.cFam] = emptyCalc(); save(); buildTiers(); updateCalc(); });
   $("j-export").addEventListener("click", exportJournal);
   $("j-import").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importJournal(f); e.target.value = ""; });

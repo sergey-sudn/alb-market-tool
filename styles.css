@@ -527,3 +527,15 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
   #r-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
   #r-cards .card.open{grid-column:1/-1}
 }
+.band{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.bandbar{position:relative;height:10px;border-radius:5px;background:var(--inset);margin:6px 0 2px}
+.bandbar i{position:absolute;top:0;height:100%}
+.bandbar .bz{background:color-mix(in srgb,var(--accent) 35%,transparent);border-radius:5px}
+.bandbar .bm{width:2px;margin-left:-1px;background:var(--ink-2)}
+.bandbar .bt{width:3px;margin-left:-1.5px;top:-4px;height:18px;border-radius:2px;background:var(--muted)}
+.bandbar .bt.pos{background:var(--good)} .bandbar .bt.warn{background:var(--warn)} .bandbar .bt.neg{background:var(--bad)}
+.bandbar .bc{width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px var(--bg-solid)}
+.band-t{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.band-t .cb{min-width:24px;height:18px;font-size:10px}
+.band-v{font-size:12px;font-weight:600}
+.band-v.warn{color:var(--warn)}
