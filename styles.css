@@ -558,3 +558,12 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
   #p-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
   #p-cards>.k{grid-column:1/-1}
 }
+.pv.g-ok,.g-ok{color:var(--good)!important} .pv.g-mid,.g-mid{color:var(--warn)!important} .pv.g-bad,.g-bad{color:var(--bad)!important}
+.pv.g-bad{opacity:.85}
+.lim-line{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);white-space:nowrap;margin-top:2px}
+.lim-line b{color:var(--ink-2)}
+.lim-edit{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 4px;border-radius:5px;font-size:12px;line-height:1}
+.lim-edit:hover{color:var(--ink);background:var(--hover)}
+.lg-colors{flex-basis:100%}
+@media (max-width:1240px){.prices .lim-line{white-space:normal;max-width:150px}}
+.card .lim-line{white-space:normal;flex-wrap:wrap}

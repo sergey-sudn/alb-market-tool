@@ -70,14 +70,14 @@ const S = {
   settings: { ...DEF, m: [...DEF.m] },
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pItem: null,
-  rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1,
+  rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -100,6 +100,7 @@ if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
 S.cTiers = clean(S.cTiers, REFINE_TIERS, [5, 6, 7, 8]);
 if (!FAM[S.cFam]) S.cFam = "stone";
+if (!S.limits || typeof S.limits !== "object" || Array.isArray(S.limits)) S.limits = {};
 if (!["margin", "stack", "tier"].includes(S.rSort)) S.rSort = "margin";
 let saveTimer;
 function save() {
@@ -529,6 +530,7 @@ function renderPricesControls() {
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дешёвый: там дешевле всего купить своим ордером</span>`
     : `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дешёвый: там дешевле всего купить сразу</span>
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дорогой: там дороже всего продать сразу</span>`;
+  $("p-legend").innerHTML += `<span class="lg-colors">Цвет цены: <b class="g-ok">зелёный</b> — даёт маржу ${nf0.format(calcSettings().m * 100)}%, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Сырьё — для покупки, материал — для продажи, при обычных ценах остальных частей рецепта</span>`;
   chips($("p-kind"), [["all", "Всё"], ["raw", "Сырьё"], ["mat", "Материал"]], (v) => v === S.pKind, (v) => { S.pKind = v; save(); openPrices(); });
   const parts = [famsText(S.pFams), tiersText(S.pTiers)];
   if (S.pEnchs.join() !== "0") parts.push(S.pEnchs.map((e) => "." + e).join(" "));
@@ -556,10 +558,57 @@ function cityQuotes(id, cities) {
   return { q, minSell, maxBuy, bestS: order ? maxSell : minSell, bestB: order ? minBuy : maxBuy };
 }
 // для зачарованного камня div = 2/4/8: при наведении видно цену в пересчёте на обычный
-function pv(o, kind, best, div = 1) {
+function pv(o, kind, best, div = 1, lim = null) {
   if (!o) return `<span class="pv none">—</span>`;
   if (o.odd) return `<span class="pv odd" title="Не похоже на реальную цену: обычно здесь торгуют около ${fmt(o.ref)}. В расчётах не учитывается">${fmt(o.p)}</span>`;
-  return `<span class="pv${best ? ` best-${kind}` : ""}"${div > 1 ? ` title="как .0: ${fmt(o.p / div)}"` : ""}>${fmt(o.p)}</span>`;
+  const g = limGrade(lim, o.p), tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
+  return `<span class="pv${best ? ` best-${kind}` : ""}${g ? " g-" + g : ""}"${tip ? ` title="${tip}"` : ""}>${fmt(o.p)}</span>`;
+}
+// ---- выгодные цены: автоматический лимит по марже и обычным ценам рецепта, либо свой ----
+// сырьё — «покупай до», материал — «продавай от». Две другие цены рецепта — обычные цены сделок за неделю.
+const LIM_TXT = { ok: "даёт желаемую маржу", mid: "в плюсе, но маржа ниже желаемой", bad: "в минусе" };
+function autoLimit(id) {
+  const p = parseId(id); if (!p || p.t < 4) return null;
+  const c = calcSettings(p.f), stone = !!FAM[p.f].stone, e = stone ? 0 : p.e;
+  if (p.kind === "raw") {
+    const sell = typical(matId(p.f, p.t, e), "sell"), prev = typical(matId(p.f, p.t - 1, e), "buy");
+    if (!sell || !prev) return null;
+    const o = economics(p.t, 0, prev.med * c.bf, sell.med, c), d = stone && p.e ? c.mult[p.e - 1] : 1;
+    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
+  }
+  const raw = stone ? typicalRaw(p.f, p.t) : typical(rawId(p.f, p.t, e), "buy"), prev = typical(matId(p.f, p.t - 1, e), "buy");
+  if (!raw || !prev) return null;
+  const o = economics(p.t, raw.med, prev.med * c.bf, 1, c);
+  return { side: "sell", lim: o.minSell(c.m), be: o.minSell(0), why: `при сырье ~${fmt(raw.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
+}
+function limitOf(id) {
+  const a = autoLimit(id), own = num((S.limits || {})[id]), p = parseId(id);
+  if (isFinite(own) && own > 0) return { side: p && p.kind === "raw" ? "buy" : "sell", lim: own, be: a ? a.be : NaN, auto: a, own: true };
+  return a && isFinite(a.lim) ? { ...a, auto: a, own: false } : null;
+}
+function limGrade(L, p) {
+  if (!L || !isFinite(p)) return "";
+  const buy = L.side === "buy";
+  if (buy ? p <= L.lim : p >= L.lim) return "ok";
+  if (isFinite(L.be) && (buy ? p <= L.be : p >= L.be)) return "mid";
+  return "bad";
+}
+// ids, история которых нужна для автоматических лимитов
+function limitIds(ids) {
+  const out = [];
+  for (const id of ids) {
+    const p = parseId(id); if (!p || p.t < 4) continue;
+    const e = FAM[p.f].stone ? 0 : p.e;
+    out.push(matId(p.f, p.t, e), matId(p.f, p.t - 1, e));
+    if (p.kind === "mat") { if (FAM[p.f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(p.f, p.t, k)); else out.push(rawId(p.f, p.t, e)); }
+  }
+  return [...new Set(out)];
+}
+function limitLine(id) {
+  const L = limitOf(id); if (!L) return "";
+  const pre = L.side === "buy" ? "бери до" : "продавай от", mm = nf0.format(calcSettings(parseId(id).f).m * 100);
+  const tip = L.own ? `Твой лимит. Расчёт сайта: ${L.auto ? fmt(L.auto.lim) + " для маржи " + mm + "%, " + L.auto.why : "нет данных"}` : `Для маржи ${mm}% ${L.why}. Нажми ✎, чтобы задать свой`;
+  return `<span class="lim-line" title="${esc(tip)}">${pre} <b>${fmt(L.lim)}</b>${L.own ? " (свой)" : ""}${isFinite(L.be) ? ` · безубыток ${fmt(L.be)}` : ""} <button type="button" class="lim-edit" data-lim="${esc(id)}" aria-label="Задать свой лимит">✎</button></span>`;
 }
 const stoneDiv = (info) => (info && FAM[info.f].stone && info.kind === "raw" && info.e ? calcSettings(info.f).mult[info.e - 1] || 1 : 1);
 const pa = (o) => o ? `<span class="pa${o.age > maxAge() ? " old" : ""}">${fmtAge(o.age)}</span>` : `<span class="pa"></span>`;
@@ -578,7 +627,8 @@ function renderPricesTable() {
       const info = parseId(id), rec = cur[`${S.settings.server}|${id}`];
       const { q, bestS, bestB } = cityQuotes(id, cities);
       const sel = id === S.pItem ? " sel" : "";
-      const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small></div></div>`;
+      const ll = limitLine(id), L = limitOf(id);
+      const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small>${ll}</div></div>`;
       const dv = stoneDiv(info);
       h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td><td class="tagcol"><div class="tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></div></td>`;
       m += `<section class="panel card${sel}" tabindex="0" data-id="${esc(id)}"><div class="card-h">${head.replace('<div class="item">', "").replace(/<\/div>$/, "")}</div>`
@@ -587,8 +637,8 @@ function renderPricesTable() {
         const { s, b } = q[c];
         if (!rec) { h += `<td><span class="empty">…</span></td>`; continue; }
         const bs = s && s.p === bestS && s.age <= maxAge(), bb = b && b.p === bestB && b.age <= maxAge();
-        h += `<td><div class="cell">${pv(s, "s", bs, dv)}${pa(s)}${pv(b, "b", bb, dv)}${pa(b)}</div></td>`;
-        if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv)}${pa(b)}</span></div>`;
+        h += `<td><div class="cell">${pv(s, "s", bs, dv, L)}${pa(s)}${pv(b, "b", bb, dv, L)}${pa(b)}</div></td>`;
+        if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv, L)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv, L)}${pa(b)}</span></div>`;
       }
       if (!rec) m += `<div class="m-line"><span class="k">Загружаю…</span></div>`;
       else if (cities.every((c) => !q[c].s && !q[c].b)) m += `<div class="m-line"><span class="k">Нет цен ни в одном городе</span></div>`;
@@ -609,6 +659,18 @@ function renderPricesTable() {
     if (isMobile()) $("p-widgets").scrollIntoView({ behavior: "smooth", block: "start" });
   };
   rowNav(tbl, "tbody tr[data-id]", pick);
+  // свой лимит: ✎ у названия предмета
+  [tbl, cards].forEach((root) => root.querySelectorAll("[data-lim]").forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const id = b.dataset.lim, p = parseId(id), L = limitOf(id), A = autoLimit(id);
+    const what = p.kind === "raw" ? "покупаю не дороже" : "продаю не дешевле";
+    const v = window.prompt(`${itemLabel(id)}: ${what} (пусто — считать автоматически${A ? `, сейчас расчёт ${fmt(A.lim)}` : ""})`, L && L.own ? String(L.lim) : "");
+    if (v === null) return;
+    S.limits = { ...(S.limits || {}) };
+    const n = num(String(v).replace(/\s/g, "").replace(",", "."));
+    if (isFinite(n) && n > 0) S.limits[id] = n; else delete S.limits[id];
+    save(); renderPricesTable();
+  })));
   rowNav(cards, ".card[data-id]", pick);
 }
 function listingFee() { const f = +S.settings.fee; return (f === 0.04 ? 0.065 : f === 0.08 ? 0.105 : f) + SETUP * relists(); }
@@ -711,7 +773,7 @@ async function openPrices(force = false) {
   if (arbItem && !ids.includes(arbItem)) arbItem = null;
   renderPricesControls(); renderPricesTable();
   await openSelected();
-  await ensure(ids, { history: true });
+  await ensure([...ids, ...limitIds(ids)], { history: true });
   if (S.view === "prices") { renderPricesTable(); renderPricesWidgets(); } // с историей видно, какие цены нереальные
 }
 
