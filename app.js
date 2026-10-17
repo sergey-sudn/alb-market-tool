@@ -62,7 +62,9 @@ function parseId(id) {
 // ---------- состояние ----------
 const KEY = "alb-market-tool-v1", JKEY = "alb-market-tool-journal", TKEY = "alb-market-tool-theme";
 const DEF = {
-  server: "europe", caerleon: false, brecilien: false, mode: "safe", age: 24,
+  server: "europe", mode: "safe", age: 24,
+  // где покупаю и где продаю — отдельно; по умолчанию пять основных городов
+  buyC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"], sellC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"],
   rrr: "0.367", rrrc: 36.7, fee: "0.065", station: 0, margin: 10, buffer: 5, order: true, m: [2, 4, 8],
   bonusFam: "", bonusPct: 10, relist: 0,
 };
@@ -81,7 +83,15 @@ const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "r
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
-    if (saved.settings) S.settings = { ...S.settings, ...saved.settings };
+    if (saved.settings) {
+      S.settings = { ...S.settings, ...saved.settings };
+      // раньше Карлеон и Брецилиэн включались одной галочкой — сразу на покупку и продажу
+      if (!Array.isArray(saved.settings.buyC)) {
+        const extra = [saved.settings.caerleon && "Caerleon", saved.settings.brecilien && "Brecilien"].filter(Boolean);
+        S.settings.buyC = [...DEF.buyC, ...extra]; S.settings.sellC = [...DEF.sellC, ...extra];
+      }
+      delete S.settings.caerleon; delete S.settings.brecilien;
+    }
     for (const k of KEYS) if (k in saved) S[k] = saved[k];
     if (saved.jf) S.jf = { ...S.jf, ...saved.jf };
     if (saved.pFam && !saved.pFams) S.pFams = [saved.pFam];
@@ -97,6 +107,8 @@ S.pTiers = clean(S.pTiers, ALL_TIERS, [5, 6, 7, 8]);
 S.pEnchs = clean(S.pEnchs, [0, 1, 2, 3], [0]);
 S.rEnchs = clean(S.rEnchs, [0, 1, 2, 3], [0]);
 if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
+S.settings.buyC = clean(S.settings.buyC, CITIES, [...DEF.buyC]);
+S.settings.sellC = clean(S.settings.sellC, CITIES, [...DEF.sellC]);
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
 S.cTiers = clean(S.cTiers, REFINE_TIERS, [5, 6, 7, 8]);
 if (!FAM[S.cFam]) S.cFam = "stone";
@@ -266,7 +278,10 @@ function liveOf(id, city, side) {
   if (!p || !t) return null;
   return { p, age: Math.max(0, (Date.now() - t) / 36e5) };
 }
-function activeCities() { return CITIES.filter((c) => (c !== "Caerleon" || S.settings.caerleon) && (c !== "Brecilien" || S.settings.brecilien)); }
+// города, где покупаю / продаю, и все, что хоть как-то отмечены (для таблицы цен и обычных цен по истории)
+const buyCities = () => CITIES.filter((c) => S.settings.buyC.includes(c));
+const sellCities = () => CITIES.filter((c) => S.settings.sellC.includes(c));
+function activeCities() { return CITIES.filter((c) => S.settings.buyC.includes(c) || S.settings.sellC.includes(c)); }
 const maxAge = () => num(S.settings.age) || 24;
 // Сколько стоит купить 1 шт. в городе. Своим ордером — лучший ордер на закупку +1 и комиссия 2,5%;
 // если ордеров нет — по самому дешёвому лоту, без комиссии
@@ -308,12 +323,12 @@ function sellIn(id, city) {
 // сравниваем с учётом комиссии ордера; o.paid — сколько реально уходит серебра за 1 шт.
 function pickBuy(id) {
   let best = null;
-  for (const c of activeCities()) { const o = buyIn(id, c); if (o) o.paid = o.price * o.fee; if (o && (!best || o.paid < best.paid)) best = o; }
+  for (const c of buyCities()) { const o = buyIn(id, c); if (o) o.paid = o.price * o.fee; if (o && (!best || o.paid < best.paid)) best = o; }
   return best;
 }
 function pickSell(id) {
   let best = null;
-  for (const c of activeCities()) { const o = sellIn(id, c); if (o && (!best || o.price > best.price)) best = o; }
+  for (const c of sellCities()) { const o = sellIn(id, c); if (o && (!best || o.price > best.price)) best = o; }
   return best;
 }
 // Сырьё для переработки: у камня сравниваем обычный и зачарованный по цене за «обычный» камень
@@ -549,8 +564,10 @@ function cityQuotes(id, cities) {
     if (s) { const r = oddPrice(id, c, "sell", s.p); if (r) { s.odd = true; s.ref = r.med; } }
     if (b) { const r = oddPrice(id, c, "buy", b.p); if (r) { b.odd = true; b.ref = r.med; } }
     q[c] = { s, b };
-    if (s && !s.odd && s.age <= maxAge()) { minSell = Math.min(minSell, s.p); maxSell = Math.max(maxSell, s.p); }
-    if (b && !b.odd && b.age <= maxAge()) { minBuy = Math.min(minBuy, b.p); maxBuy = Math.max(maxBuy, b.p); }
+    // лучшая цена для покупки — только среди городов «покупаю», для продажи — среди «продаю»
+    const canB = S.settings.buyC.includes(c), canS = S.settings.sellC.includes(c);
+    if (s && !s.odd && s.age <= maxAge()) { if (canB) minSell = Math.min(minSell, s.p); if (canS) maxSell = Math.max(maxSell, s.p); }
+    if (b && !b.odd && b.age <= maxAge()) { if (canB) minBuy = Math.min(minBuy, b.p); if (canS) maxBuy = Math.max(maxBuy, b.p); }
   }
   // «сразу»: купить по самому дешёвому лоту, продать в самый дорогой ордер;
   // «своим ордером»: купить ордером там, где ордера дешевле всего, продать лотом там, где лоты дороже всего
@@ -612,9 +629,10 @@ function limitLine(id) {
 }
 const stoneDiv = (info) => (info && FAM[info.f].stone && info.kind === "raw" && info.e ? calcSettings(info.f).mult[info.e - 1] || 1 : 1);
 const pa = (o) => o ? `<span class="pa${o.age > maxAge() ? " old" : ""}">${fmtAge(o.age)}</span>` : `<span class="pa"></span>`;
+const cityRole = (c) => { const b = S.settings.buyC.includes(c), s = S.settings.sellC.includes(c); return b && !s ? "только покупка" : s && !b ? "только продажа" : ""; };
 function renderPricesTable() {
   const groups = pricesGroups(), cities = activeCities(), tbl = $("p-table"), cards = $("p-cards");
-  let h = `<thead><tr><th scope="col">Ресурс</th><th class="tagcol"></th>${cities.map((c) => `<th scope="col" class="cityh" style="color:${CITY_COLOR[c]}">${c}</th>`).join("")}</tr></thead><tbody>`;
+  let h = `<thead><tr><th scope="col">Ресурс</th><th class="tagcol"></th>${cities.map((c) => `<th scope="col" class="cityh" style="color:${CITY_COLOR[c]}">${c}${cityRole(c) ? `<small>${cityRole(c)}</small>` : ""}</th>`).join("")}</tr></thead><tbody>`;
   let m = "", any = false;
   for (const g of groups) {
     if (!g.ids.length) continue;
@@ -636,7 +654,9 @@ function renderPricesTable() {
       for (const c of cities) {
         const { s, b } = q[c];
         if (!rec) { h += `<td><span class="empty">…</span></td>`; continue; }
-        const bs = s && s.p === bestS && s.age <= maxAge(), bb = b && b.p === bestB && b.age <= maxAge();
+        // лучшая цена подсвечивается только там, где эта сторона сделки разрешена в «Условиях»
+        const ord = S.pMode === "order", inB = S.settings.buyC.includes(c), inS = S.settings.sellC.includes(c);
+        const bs = s && s.p === bestS && s.age <= maxAge() && (ord ? inS : inB), bb = b && b.p === bestB && b.age <= maxAge() && (ord ? inB : inS);
         h += `<td><div class="cell">${pv(s, "s", bs, dv, L)}${pa(s)}${pv(b, "b", bb, dv, L)}${pa(b)}</div></td>`;
         if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv, L)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv, L)}${pa(b)}</span></div>`;
       }
@@ -687,8 +707,8 @@ function renderPricesWidgets() {
   for (const c of cities) {
     const s = q[c].s, b = q[c].b;
     const buySide = order ? b : s, sellSide = order ? s : b;
-    if (buySide && !buySide.odd && buySide.age <= maxAge() && (!lo || buySide.p < lo.p)) lo = { ...buySide, city: c };
-    if (sellSide && !sellSide.odd && sellSide.age <= maxAge() && (!hi || sellSide.p > hi.p)) hi = { ...sellSide, city: c };
+    if (S.settings.buyC.includes(c) && buySide && !buySide.odd && buySide.age <= maxAge() && (!lo || buySide.p < lo.p)) lo = { ...buySide, city: c };
+    if (S.settings.sellC.includes(c) && sellSide && !sellSide.odd && sellSide.age <= maxAge() && (!hi || sellSide.p > hi.p)) hi = { ...sellSide, city: c };
   }
   const ser = series7(id);
   const dv = stoneDiv(info);
@@ -712,7 +732,7 @@ let arbItem = null; // null — лучший маршрут среди пока�
 const ARB_MIN_VOL = 100;
 function routesFor(id) {
   const cities = activeCities(), { q } = cityQuotes(id, cities), fee = listingFee(), out = [];
-  for (const a of cities) for (const b of cities) {
+  for (const a of buyCities()) for (const b of sellCities()) {
     if (a === b) continue;
     const sa = q[a].s, sb = q[b].s;
     if (!sa || !sb || sa.odd || sb.odd || sa.age > maxAge() || sb.age > maxAge()) continue;
@@ -995,7 +1015,7 @@ function rawQuote(f, t, e, k, city, how) {
 }
 function cheapest(fn) {
   let best = null;
-  for (const c of activeCities()) { const o = fn(c); if (o && !o.odd && (!best || o.paid < best.paid)) best = o; }
+  for (const c of buyCities()) { const o = fn(c); if (o && !o.odd && (!best || o.paid < best.paid)) best = o; }
   return best;
 }
 // строка с учётом выбора; без выбора — как есть
@@ -1057,8 +1077,8 @@ function detHtml(r) {
   const k = stoneK(r), m = stoneMult(r), rawName = itemLabel(rawId(r.f, r.t, k || r.e)), prevName = itemLabel(matId(r.f, r.t - 1, r.e));
   const p = r.picked || {}, rawHow = p.rawHow || howOf(r.raw), prevOwn = !!p.prevOwn, prevHow = p.prevHow || howOf(r.prev);
   const rawK = p.rawK ?? k, prevId = matId(r.f, r.t - 1, r.e);
-  const rawCities = activeCities().map((c) => ({ c, o: rawQuote(r.f, r.t, r.e, rawK, c, rawHow) }));
-  const prevCities = activeCities().map((c) => ({ c, o: quoteBuy(prevId, c, prevHow) }));
+  const rawCities = buyCities().map((c) => ({ c, o: rawQuote(r.f, r.t, r.e, rawK, c, rawHow) }));
+  const prevCities = buyCities().map((c) => ({ c, o: quoteBuy(prevId, c, prevHow) }));
   const oddWarn = (o) => (o && o.odd ? `<p class="dn warn-t">Цена ордера не похожа на реальную — расчёт может быть неточным.</p>` : "");
   let h = `<div class="det-grid" data-rk="${rowKey(r)}">`;
   if (r.custom) {
@@ -1160,7 +1180,7 @@ function goPrices(id) {
 // где продать: цена и объём во всех городах, прибыль с 1 шт. при такой цене
 function whereSell(r) {
   if (!r.ok) return "";
-  const rows = activeCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
+  const rows = sellCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
   const liq = liquidity(r.sell.vol);
   return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<button type="button" class="dl ws${c === r.sell.city ? " on" : ""}" data-pick="sellCity" data-v="${esc(c)}" aria-pressed="${c === r.sell.city}" title="Считать продажу в ${esc(c)}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></button>`).join("")}
@@ -1235,7 +1255,7 @@ function calcIds(f) {
 }
 // обычные цены по истории сделок за 7 дней: город, где покупают/продают достаточно, и коридор цен
 function typical(id, side) {
-  const list = activeCities().map((c) => ({ c, h: histStats(id, c) })).filter((x) => x.h && x.h.vol >= MIN_VOL);
+  const list = (side === "buy" ? buyCities() : sellCities()).map((c) => ({ c, h: histStats(id, c) })).filter((x) => x.h && x.h.vol >= MIN_VOL);
   if (!list.length) return null;
   const maxVol = Math.max(...list.map((x) => x.h.vol));
   const ok = list.filter((x) => x.h.vol >= maxVol * 0.25); // не берём город, где почти не торгуют
@@ -1765,9 +1785,22 @@ function rerenderAll() {
   if (S.view === "journal") renderJournal();
   renderTicker();
 }
+// «Условия»: где покупаю и где продаю — по галочке на город. Хотя бы один город в каждом списке остаётся
+function renderCityGrid() {
+  const st = S.settings, box = $("s-cities");
+  const cell = (c, side) => { const on = st[side].includes(c); return `<label class="cg-c"><input type="checkbox" data-side="${side}" data-city="${esc(c)}"${on ? " checked" : ""} aria-label="${side === "buyC" ? "Покупаю" : "Продаю"} в ${esc(c)}"></label>`; };
+  box.innerHTML = `<span></span><span class="cg-h">покупаю</span><span class="cg-h">продаю</span>`
+    + CITIES.map((c) => `<span class="cg-n">${cityBadge(c)}${esc(c)}${c === "Caerleon" ? ` <small>красная зона</small>` : ""}</span>${cell(c, "buyC")}${cell(c, "sellC")}`).join("");
+  box.querySelectorAll("input").forEach((inp) => inp.addEventListener("change", () => {
+    const side = inp.dataset.side, c = inp.dataset.city;
+    const next = inp.checked ? [...new Set([...st[side], c])] : st[side].filter((x) => x !== c);
+    if (!next.length) { inp.checked = true; toast(side === "buyC" ? "Нужен хотя бы один город для покупки" : "Нужен хотя бы один город для продажи"); return; }
+    st[side] = next; rPick.clear(); save(); rerenderAll();
+  }));
+}
 function bindSettings() {
   const st = S.settings;
-  $("s-server").value = st.server; $("s-caerleon").checked = !!st.caerleon; $("s-brecilien").checked = !!st.brecilien;
+  $("s-server").value = st.server; renderCityGrid();
   $("s-mode").value = st.mode; $("s-age").value = st.age;
   $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-station").value = st.station;
   $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-relist").value = st.relist ?? 0; $("s-buy").value = st.order ? "order" : "now";
@@ -1780,7 +1813,6 @@ function bindSettings() {
   on("s-buy", (el) => (st.order = el.value === "order"), "change"); on("s-age", (el) => (st.age = el.value));
   on("s-mode", (el) => (st.mode = el.value), "change");
   on("s-bfam", (el) => (st.bonusFam = el.value), "change"); on("s-bpct", (el) => (st.bonusPct = +el.value), "change");
-  on("s-caerleon", (el) => (st.caerleon = el.checked), "change"); on("s-brecilien", (el) => (st.brecilien = el.checked), "change");
   ["s-m1", "s-m2", "s-m3"].forEach((id, i) => on(id, (el) => (st.m[i] = el.value)));
   $("s-server").addEventListener("change", (e) => { st.server = e.target.value; save(); sumHint(); tickerLoaded = false; route(); loadTicker(); });
   const dlg = $("settings");

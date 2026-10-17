@@ -583,3 +583,13 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .lg-colors{flex-basis:100%}
 @media (max-width:1240px){.prices .lim-line{white-space:normal;max-width:150px}}
 .card .lim-line{white-space:normal;flex-wrap:wrap}
+
+/* «Условия»: города — покупаю / продаю */
+.cgrid{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;column-gap:6px;row-gap:2px;padding:6px 10px;border-radius:12px;background:var(--inset)}
+.cg-h{font-size:11px;color:var(--muted);text-align:center;min-width:64px}
+.cg-n{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-2);padding:3px 0;min-width:0;white-space:nowrap}
+.cg-n small{color:var(--bad);font-size:11px}
+.cg-n .cb{min-width:26px;height:20px;font-size:10px}
+.cg-c{display:flex;justify-content:center;cursor:pointer;padding:4px}
+.cg-c input{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+.grid th.cityh small{display:block;font-size:10px;font-weight:500;color:var(--muted);white-space:nowrap}
