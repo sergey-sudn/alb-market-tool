@@ -924,9 +924,22 @@ function focusInfo(r) {
   const costF = inputs * kf + c.station, gain = inputs * (c.k - kf);
   return { kf, rf: 1 - kf, costF, profit: r.effSell - costF, gain, perOut, perPoint: perOut ? gain / perOut : NaN, stackFocus: perOut * STACK };
 }
-function goCalc(f, t) {
+function goCalc(f, t, key) {
   S.cFam = f; if (!S.cTiers.includes(t)) S.cTiers = toggleIn(S.cTiers, t, REFINE_TIERS);
-  fillCalcFromMarket(f); save(); location.hash = "calc";
+  fillCalcFromMarket(f);
+  // свой вариант из «Переработки» переносим как есть; «Пороги» считают только .0, кроме камня
+  const base = key && rPick.has(key) ? refineAll().find((x) => rowKey(x) === key) : null;
+  const r = base && applyPick(base);
+  if (r && r.custom && (r.e === 0 || FAM[f].stone)) {
+    const c = calcSettings(f), P = S.calc[f][t], tag = "выбрано в «Переработке»";
+    const how = (o) => (o.src === "order" ? "свой ордер" : "лот") + (c.bf !== 1 && o.fee === 1 ? `, ${fmt(o.paid)} за шт.` : "");
+    P.note = { ...(P.note || {}) };
+    // в «Порогах» комиссия ордера берётся из условий, поэтому переносим цену так, чтобы итог с комиссией совпал
+    if (r.raw) { P.raw = Math.round(r.raw.paid / c.bf); P.note.raw = `${tag}: ${r.raw.city}, ${how(r.raw)}${r.raw.ench ? `, камень .${r.raw.ench} по ${fmt(r.raw.unit)}` : ""}`; }
+    if (r.prev) { P.own = false; P.prev = Math.round(r.prev.paid / c.bf); P.note.prev = r.prev.src === "own" ? `${tag}: свой крафт, себестоимость ${fmt(r.prev.paid)}` : `${tag}: ${r.prev.city}, ${how(r.prev)}`; }
+    if (r.sell) { P.sell = Math.round(r.sell.price); P.note.sell = `${tag}: ${r.sell.city}`; }
+  }
+  save(); location.hash = "calc";
 }
 // раскрытые строки таблицы (живут, пока открыта страница)
 const rOpen = new Set();
@@ -955,25 +968,112 @@ function metaLine(o, withVol = true) {
   if (withVol && o.src === "order" && isFinite(o.vol)) parts.push(`~${nf0.format(o.vol)} в день`);
   return parts.filter(Boolean).join(" · ");
 }
-// варианты камня: цена за штуку и (в скобках) в пересчёте на обычный
+// ---------- свой вариант в деталях строки ----------
+// город и способ закупки, вариант камня, город продажи. Живёт, пока открыта страница и не обновлены цены
+const rPick = new Map();
+const howOf = (o) => (o && o.src === "order" ? "order" : "lot");
+// свой ордер в городе: лучший ордер +1 и комиссия. Подозрительно низкий ордер не прячем, а помечаем
+function orderIn(id, city) {
+  if (S.settings.mode === "hist") return null;
+  const b = liveOf(id, city, "buy");
+  if (!b || b.age > maxAge()) return null;
+  const hs = histStats(id, city);
+  return { price: b.p + 1, city, src: "order", age: b.age, vol: hs ? hs.vol : NaN, fee: orderFee(), odd: !!oddPrice(id, city, "buy", b.p) };
+}
+function quoteBuy(id, city, how) {
+  let o;
+  if (how === "order") o = orderIn(id, city);
+  else { const l = lotIn(id, city); o = l && { ...l, fee: 1 }; }
+  if (o) o.paid = o.price * o.fee;
+  return o;
+}
+// сырьё в городе; у камня цена приводится к обычному камню
+function rawQuote(f, t, e, k, city, how) {
+  const stone = FAM[f].stone, o = quoteBuy(rawId(f, t, stone ? k : e), city, how); if (!o) return null;
+  const m = stone && k ? calcSettings(f).mult[k - 1] : 1;
+  return { ...o, price: o.price / m, paid: o.paid / m, unit: o.price, ench: stone ? k : e };
+}
+function cheapest(fn) {
+  let best = null;
+  for (const c of activeCities()) { const o = fn(c); if (o && !o.odd && (!best || o.paid < best.paid)) best = o; }
+  return best;
+}
+// строка с учётом выбора; без выбора — как есть
+function applyPick(r) {
+  const p = rPick.get(rowKey(r)); if (!p) return r;
+  const { f, t, e } = r, c = r.c;
+  let raw = r.raw, prev = r.prev, sell = r.sell;
+  if (p.rawK !== undefined || p.rawHow || p.rawCity) {
+    const k = p.rawK ?? stoneK(r), how = p.rawHow || howOf(r.raw);
+    raw = (p.rawCity && rawQuote(f, t, e, k, p.rawCity, how)) || cheapest((cc) => rawQuote(f, t, e, k, cc, how));
+  }
+  let own = null;
+  if (p.prevOwn) {
+    own = ownCost(f, t - 1, e);
+    prev = own && { src: "own", price: own.cost, paid: own.cost, fee: 1, city: "" };
+  } else if (p.prevHow || p.prevCity) {
+    const id = matId(f, t - 1, e), how = p.prevHow || howOf(r.prev);
+    prev = (p.prevCity && quoteBuy(id, p.prevCity, how)) || cheapest((cc) => quoteBuy(id, cc, how));
+  }
+  if (p.sellCity) sell = sellIn(r.id, p.sellCity);
+  const row = { ...r, raw, prev, sell, ok: !!(raw && prev && sell), custom: true, best: r, picked: p };
+  if (row.ok) {
+    Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }));
+    if (r.own && !p.prevOwn) row.own = { ...r.own, profit: economics(t, raw.paid, r.own.cost, sell.price, { ...c, bf: 1 }).profit };
+    if (p.prevOwn) row.own = null;
+  } else Object.assign(row, { profit: NaN, margin: NaN, cost: NaN });
+  return row;
+}
+function setPick(key, patch) {
+  const p = { ...(rPick.get(key) || {}), ...patch };
+  for (const k of Object.keys(p)) if (p[k] === undefined) delete p[k];
+  if (Object.keys(p).length) rPick.set(key, p); else rPick.delete(key);
+  renderRefine();
+}
+const pickBtn = (attrs, on, inner, cls = "var", title = "") => `<button type="button" class="${cls}${on ? " on" : ""}" ${attrs} aria-pressed="${on}"${title ? ` title="${esc(title)}"` : ""}>${inner}</button>`;
+function howSeg(kind, how, withOwn = false, own = false) {
+  const b = (v, l, on, title = "") => `<button type="button" data-pick="${kind}How" data-v="${v}" aria-pressed="${on}"${title ? ` title="${title}"` : ""}>${l}</button>`;
+  return `<span class="seg pseg">${b("order", "ордер", !own && how === "order", "Свой ордер: лучший ордер +1, комиссия 2,5%. Исполняется не сразу")}${b("lot", "лот", !own && how === "lot", "Купить сразу по самому дешёвому лоту")}${withOwn ? b("own", "свой крафт", own, "Сделать самому из рыночного сырья тира ниже") : ""}</span>`;
+}
+// города для закупки: цена за штуку, выбранный подсвечен, самые дешёвые первыми
+function cityPicks(kind, quotes, cur) {
+  const list = quotes.filter((x) => x.o).sort((a, b) => a.o.paid - b.o.paid);
+  if (!list.length) return `<p class="dn">Нет цен ни в одном городе.</p>`;
+  return `<div class="vars cpick">${list.map(({ c, o }) => pickBtn(`data-pick="${kind}City" data-v="${esc(c)}"`, cur && cur.city === c,
+    `${cityBadge(c)}<span class="${o.odd ? "odd" : ""}">${fmt(o.unit ?? o.price)}</span>`, "var cv",
+    o.odd ? "Не похоже на реальную цену: ордер сильно ниже обычного. Можно выбрать, но расчёт будет неточным" : `${c}: ${o.src === "order" ? "свой ордер" : "лот"} ${fmt(o.unit ?? o.price)}${o.fee > 1 ? " + комиссия" : ""}`)).join("")}</div>`;
+}
+// варианты камня: цена за штуку и (в скобках) в пересчёте на обычный; клик — считать этим камнем
 function stoneVariants(r) {
-  const m = calcSettings(r.f).mult, k0 = stoneK(r);
+  const m = calcSettings(r.f).mult, k0 = stoneK(r), how = howOf(r.raw);
   return [0, 1, 2, 3].map((k) => {
-    const o = pickBuy(rawId(r.f, r.t, k));
-    const txt = !o ? `.${k} —` : k ? `.${k} ${fmt(o.price)} <span class="eq">(${fmt(o.price / m[k - 1])})</span>` : `.0 ${fmt(o.price)}`;
-    return `<span class="var${k === k0 ? " on" : ""}">${txt}</span>`;
+    const o = cheapest((c) => rawQuote(r.f, r.t, 0, k, c, how));
+    const txt = !o ? `.${k} —` : k ? `.${k} ${fmt(o.unit)} <span class="eq">(${fmt(o.unit / m[k - 1])})</span>` : `.0 ${fmt(o.unit)}`;
+    return o ? pickBtn(`data-pick="rawK" data-v="${k}"`, k === k0 && !!r.raw, txt) : `<span class="var off">${txt}</span>`;
   }).join("");
 }
 function detHtml(r) {
   const c = r.c, kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
   const k = stoneK(r), m = stoneMult(r), rawName = itemLabel(rawId(r.f, r.t, k || r.e)), prevName = itemLabel(matId(r.f, r.t - 1, r.e));
-  let h = `<div class="det-grid">`;
+  const p = r.picked || {}, rawHow = p.rawHow || howOf(r.raw), prevOwn = !!p.prevOwn, prevHow = p.prevHow || howOf(r.prev);
+  const rawK = p.rawK ?? k, prevId = matId(r.f, r.t - 1, r.e);
+  const rawCities = activeCities().map((c) => ({ c, o: rawQuote(r.f, r.t, r.e, rawK, c, rawHow) }));
+  const prevCities = activeCities().map((c) => ({ c, o: quoteBuy(prevId, c, prevHow) }));
+  const oddWarn = (o) => (o && o.odd ? `<p class="dn warn-t">Цена ордера не похожа на реальную — расчёт может быть неточным.</p>` : "");
+  let h = `<div class="det-grid" data-rk="${rowKey(r)}">`;
+  if (r.custom) {
+    const b = r.best;
+    h += `<div class="pickbar"><span><b>Свой вариант.</b> ${b.ok ? `Лучший: маржа ${nf0.format(b.margin * 100)}%, ${fmtBig(b.profit * STACK)} за стак.` : ""}${r.ok && b.ok ? ` Разница <b class="${r.profit - b.profit >= 0 ? "pos" : "neg"}">${fmtBig((r.profit - b.profit) * STACK)}</b> за стак.` : ""}</span>`
+      + `<button type="button" class="btn ghost" data-pick="reset">↺ К лучшему</button></div>`;
+  }
   h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>`
     + kv(lnk(rawId(r.f, r.t, k || r.e), `${esc(rawName)} ×${N[r.t]}`), r.raw ? `${fmt(r.raw.unit)}${k ? ` <span class="eq">(.0 — ${fmt(r.raw.price)})</span>` : ""}` : "нет цены")
-    + (r.raw ? `<p class="dn">${metaLine(r.raw)}</p>` : "")
-    + (FAM[r.f].stone ? `<div class="vars" title="Цена за штуку, в скобках — в пересчёте на обычный камень: зачарованный даёт в 2/4/8 раз больше блоков">${stoneVariants(r)}</div>` : "")
-    + kv(lnk(matId(r.f, r.t - 1, r.e), `${esc(prevName)} ×${nf1.format(m)}`), r.prev ? fmt(r.prev.price) : "нет цены")
-    + (r.prev ? `<p class="dn">${metaLine(r.prev)}</p>` : "")
+    + (r.raw ? `<p class="dn">${metaLine(r.raw)}</p>` : "") + oddWarn(r.raw)
+    + (FAM[r.f].stone ? `<div class="vars" title="Цена за штуку, в скобках — в пересчёте на обычный камень: зачарованный даёт в 2/4/8 раз больше блоков. Нажми, чтобы считать этим камнем">${stoneVariants(r)}</div>` : "")
+    + `<div class="pickrow">${howSeg("raw", rawHow)}</div>` + cityPicks("raw", rawCities, r.raw)
+    + kv(lnk(prevId, `${esc(prevName)} ×${nf1.format(m)}`), r.prev ? fmt(r.prev.price) : "нет цены")
+    + (r.prev ? `<p class="dn">${prevOwn ? `свой крафт по себестоимости` : metaLine(r.prev)}</p>` : "") + oddWarn(r.prev)
+    + `<div class="pickrow">${howSeg("prev", prevHow, r.t > 3 && !!ownCost(r.f, r.t - 1, r.e), prevOwn)}</div>` + (prevOwn ? "" : cityPicks("prev", prevCities, r.prev))
     + (r.own ? `<div class="own-box"><div class="dl"><span>Сделать самому</span><b class="pos">${fmt(r.own.cost)} <span class="eq">(−${nf0.format(r.own.save * 100)}%)</span></b></div><p class="dn">${esc(itemLabel(rawId(r.f, r.t - 1, stoneK({ ...r, raw: r.own.raw }) || r.e)))} ×${N[r.t - 1]} по ${fmt(r.own.raw.unit)} + ${esc(itemLabel(matId(r.f, r.t - 2, r.e)))} ×${nf1.format(stoneMult({ ...r, raw: r.own.raw }))} по ${fmt(r.own.prev.price)}, с возвратом</p></div>` : "")
     + kv("На выходе", `${nf1.format(m)} шт.`) + `</div>`;
   if (r.ok) {
@@ -989,7 +1089,7 @@ function detHtml(r) {
       + kv("Вложить на стак", fmtBig(r.capital, false))
       + (r.own ? kv("Если тир ниже сделать самому", fmtBig(r.own.profit * STACK) + " за стак", "pos") : "")
       + focusKv(r)
-      + `<button class="btn primary" type="button" data-calc="${r.f}" data-t="${r.t}">Открыть в «Порогах»</button></div>`;
+      + `<button class="btn primary" type="button" data-calc="${r.f}" data-t="${r.t}" data-key="${rowKey(r)}">Открыть в «Порогах»</button></div>`;
   } else {
     h += `<div class="det-b"><h4>Не хватает цен</h4><p class="dn">Нет свежих цен на ${[!r.raw && "сырьё", !r.prev && "материал тира ниже", !r.sell && "продажу"].filter(Boolean).join(", ")}. Попробуй обновить цены или выбрать другие города в «Условиях».</p>`
       + `<button class="btn" type="button" data-calc="${r.f}" data-t="${r.t}">Открыть в «Порогах»</button></div>`;
@@ -998,7 +1098,7 @@ function detHtml(r) {
 }
 const CHEV = `<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
 function renderRefine() {
-  const all = refineAll(), rows = refineRows(all), c0 = calcSettings(), tbl = $("r-table"), cards = $("r-cards");
+  const all = refineAll(), rows = refineRows(all).map(applyPick), c0 = calcSettings(), tbl = $("r-table"), cards = $("r-cards");
   renderRefineWidgets(all);
   $("r-show").textContent = `Показать ${rows.length} ${plural(rows.length, ["рецепт", "рецепта", "рецептов"])}`;
   let h = `<thead><tr><th scope="col">Что делаем</th><th scope="col">Сырьё</th><th scope="col">Тир ниже</th><th scope="col">Продажа</th><th scope="col" class="c-spark">7 дней</th><th scope="col">За 1 шт.</th><th scope="col">Маржа</th><th scope="col">За стак</th></tr></thead><tbody>`;
@@ -1011,7 +1111,7 @@ function renderRefine() {
   for (const r of rows) {
     const key = rowKey(r), open = rOpen.has(key);
     const name = esc(itemLabel(r.id)), recipe = esc(recipeText(r));
-    const bonus = r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : "";
+    const bonus = (r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : "") + (r.custom ? ` <span class="tag ord" title="Цены и города выбраны вручную в деталях. Сортировка — по лучшему варианту">свой вариант</span>` : "");
     h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${key}" aria-expanded="${open}"><td><div class="item">${CHEV}${icon(r.id, 40)}<div class="iname"><b>${name}${bonus}</b><small title="${recipe}">${recipe}</small></div></div></td>`;
     h += priceCell(r.raw, r.raw && r.raw.unit) + priceCell(r.prev, undefined, "", r.own ? `<span class="tag own" title="Сделать самому: ${fmt(r.own.cost)} вместо ${fmt(r.prev.paid)}">свой −${nf0.format(r.own.save * 100)}%</span>` : "") + priceCell(r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "");
     const ser = r.sell ? series7(r.id, r.sell.city) : null;
@@ -1063,8 +1163,8 @@ function whereSell(r) {
   const rows = activeCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
   const liq = liquidity(r.sell.vol);
-  return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<div class="dl ws${c === r.sell.city ? " on" : ""}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
-    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. Цена за вычетом уценки ${fmtPct(r.c.buf)} и ${relists() ? "налога со сборами" : "налога"} ${fmtPct(r.c.fee)}</p>
+  return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<button type="button" class="dl ws${c === r.sell.city ? " on" : ""}" data-pick="sellCity" data-v="${esc(c)}" aria-pressed="${c === r.sell.city}" title="Считать продажу в ${esc(c)}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></button>`).join("")}
+    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. Нажми на город, чтобы считать продажу там. Цена за вычетом уценки ${fmtPct(r.c.buf)} и ${relists() ? "налога со сборами" : "налога"} ${fmtPct(r.c.fee)}</p>
     <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
 }
 // закупочный лист на N стаков на выходе
@@ -1073,13 +1173,13 @@ function shopList(r) {
   const n = Math.max(1, num(S.shopStacks) || 1), m = stoneMult(r), k = stoneK(r);
   const sets = (n * STACK * r.c.k) / m; // крафтов на закупленное (остальное — перекрафт возврата)
   const rawQ = Math.ceil(sets * N[r.t]), prevQ = Math.ceil(sets * m);
-  const line = (id, q, o) => `${itemLabel(id)} — ${nf0.format(q)} шт., ${o.src === "order" ? "ордер" : "лот"} ${fmt(o.src === "order" ? o.price : o.price)} в ${o.city}`;
+  const line = (id, q, o) => `${itemLabel(id)} — ${nf0.format(q)} шт., ${o.src === "own" ? `сделать самому, себестоимость ${fmt(o.price)}` : `${o.src === "order" ? "ордер" : "лот"} ${fmt(o.price)} в ${o.city}`}`;
   const rawIdK = rawId(r.f, r.t, k || r.e), total = rawQ * r.raw.unit * (r.raw.fee || 1) + prevQ * r.prev.price * (r.prev.fee || 1);
   const text = `${itemLabel(r.id)} ×${nf0.format(n * STACK)}:\n• ${line(rawIdK, rawQ, { ...r.raw, price: r.raw.unit })}\n• ${line(matId(r.f, r.t - 1, r.e), prevQ, r.prev)}\nИтого ~${fmtBig(total, false)} серебра`;
   return `<div class="det-b shop"><h4>Закупочный лист</h4>
     <label class="dl"><span>Стаков на выходе</span><input type="number" class="shop-n" min="1" step="1" inputmode="numeric" value="${n}"></label>
     <div class="dl"><span>${lnk(rawIdK, esc(itemLabel(rawIdK)))}</span><b>${nf0.format(rawQ)} шт.</b></div>
-    <div class="dl"><span>${lnk(matId(r.f, r.t - 1, r.e), esc(itemLabel(matId(r.f, r.t - 1, r.e))))}</span><b>${nf0.format(prevQ)} шт.</b></div>
+    <div class="dl"><span>${lnk(matId(r.f, r.t - 1, r.e), esc(itemLabel(matId(r.f, r.t - 1, r.e))))}${r.prev.src === "own" ? ` <span class="eq">сделать самому</span>` : ""}</span><b>${nf0.format(prevQ)} шт.</b></div>
     <div class="dl"><span>Нужно серебра</span><b>~${fmtBig(total, false)}</b></div>
     <p class="dn">С учётом перекрафта возврата: закупаешь меньше, чем ${nf0.format(n * STACK)} шт. на выходе</p>
     <button class="btn ghost" type="button" data-copy="${esc(text)}">Скопировать список</button></div>`;
@@ -1092,6 +1192,15 @@ function focusKv(r) {
 }
 // обработчики внутри раскрытых деталей
 function bindDet(root) {
+  root.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const key = b.closest("[data-rk]").dataset.rk, v = b.dataset.v, kind = b.dataset.pick;
+    if (kind === "reset") { rPick.delete(key); renderRefine(); return; }
+    if (kind === "rawK") setPick(key, { rawK: +v, rawCity: undefined });
+    else if (kind === "rawHow") setPick(key, { rawHow: v });
+    else if (kind === "prevHow") setPick(key, v === "own" ? { prevOwn: true } : { prevHow: v, prevOwn: undefined });
+    else setPick(key, { [kind]: v });
+  }));
   root.querySelectorAll("[data-goprice]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); goPrices(b.dataset.goprice); }));
   root.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -1104,10 +1213,11 @@ function bindDet(root) {
   });
 }
 function bindCalcBtns(root) {
-  root.querySelectorAll("[data-calc]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); goCalc(b.dataset.calc, +b.dataset.t); }));
+  root.querySelectorAll("[data-calc]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); goCalc(b.dataset.calc, +b.dataset.t, b.dataset.key); }));
   bindDet(root);
 }
 async function openRefine(force = false) {
+  if (force) rPick.clear(); // свежие цены — свой выбор сбрасываем к лучшему
   renderRefineControls(); renderRefine();
   await ensure(refineIds(), { history: true, force });
   if (S.view === "refine") renderRefine();

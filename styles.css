@@ -491,6 +491,22 @@ details.how ul{padding-left:18px;margin:12px 0 4px;display:flex;flex-direction:c
 .vars{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 8px}
 .var{font-size:12px;padding:3px 8px;border-radius:8px;background:var(--hover);color:var(--ink-2);white-space:nowrap}
 .var.on{background:var(--accent-soft);color:var(--ink);font-weight:600}
+button.var{font:inherit;font-size:12px;border:0;cursor:pointer;box-shadow:inset 0 0 0 1px transparent}
+button.var:hover{background:var(--accent-soft)}
+button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.var.off{opacity:.45}
+.var.cv{display:inline-flex;align-items:center;gap:5px;padding:2px 7px 2px 3px}
+.var.cv .cb{min-width:24px;height:18px;font-size:10px}
+.var .odd{color:var(--faint);text-decoration:line-through}
+.pickrow{display:flex;align-items:center;gap:8px;margin:2px 0 4px}
+.pseg button{font-size:11px;padding:4px 9px}
+.cpick{margin:2px 0 10px}
+.dn.warn-t{color:var(--warn)}
+.pickbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;border-radius:14px;background:var(--accent-soft);font-size:13px}
+.pickbar .btn{padding:6px 12px;font-size:13px}
+.det-b button.ws{font:inherit;font-size:13px;color:inherit;background:transparent;border:0;width:calc(100% + 12px);text-align:left;cursor:pointer}
+.det-b button.ws:hover{background:var(--hover)}
+.det-b button.ws.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
 .det-b .dl span .liq{margin-right:4px}
 .arb-item{display:flex;align-items:center;gap:10px;background:none;border:0;padding:0;cursor:pointer;color:var(--ink);text-align:left;font-size:15px}
 .arb-item .k{margin-left:auto}
