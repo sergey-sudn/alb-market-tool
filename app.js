@@ -545,7 +545,7 @@ function renderPricesControls() {
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дешёвый: там дешевле всего купить своим ордером</span>`
     : `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дешёвый: там дешевле всего купить сразу</span>
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дорогой: там дороже всего продать сразу</span>`;
-  $("p-legend").innerHTML += `<span class="lg-colors">Цвет цены: <b class="g-ok">зелёный</b> — даёт маржу ${nf0.format(calcSettings().m * 100)}%, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Сырьё — для покупки, материал — для продажи, при обычных ценах остальных частей рецепта</span>`;
+  $("p-legend").innerHTML += `<span class="lg-colors">Цвет цены: <b class="g-ok">зелёный</b> — даёт маржу ${nf0.format(calcSettings().m * 100)}%, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Сырьё — для покупки, материал — для продажи, при обычных ценах остальных частей рецепта. Рядом с ценой — маржа переработки при ней (если таблица не влезает по ширине — в подсказке при наведении)</span>`;
   chips($("p-kind"), [["all", "Всё"], ["raw", "Сырьё"], ["mat", "Материал"]], (v) => v === S.pKind, (v) => { S.pKind = v; save(); openPrices(); });
   const parts = [famsText(S.pFams), tiersText(S.pTiers)];
   if (S.pEnchs.join() !== "0") parts.push(S.pEnchs.map((e) => "." + e).join(" "));
@@ -578,8 +578,11 @@ function cityQuotes(id, cities) {
 function pv(o, kind, best, div = 1, lim = null) {
   if (!o) return `<span class="pv none">—</span>`;
   if (o.odd) return `<span class="pv odd" title="Не похоже на реальную цену: обычно здесь торгуют около ${fmt(o.ref)}. В расчётах не учитывается">${fmt(o.p)}</span>`;
-  const g = limGrade(lim, o.p), tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
-  return `<span class="pv${best ? ` best-${kind}` : ""}${g ? " g-" + g : ""}"${tip ? ` title="${tip}"` : ""}>${fmt(o.p)}</span>`;
+  // маржа переработки при этой цене: остальные цены рецепта — обычные цены сделок за неделю
+  const g = limGrade(lim, o.p), mg = lim && lim.auto && lim.auto.mAt ? lim.auto.mAt(o.p) : NaN;
+  const pm = isFinite(mg) ? `${mg < 0 ? "−" : ""}${nf0.format(Math.abs(mg * 100))}%` : "";
+  const tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", pm ? `маржа ${pm}` : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
+  return `<span class="pv${best ? ` best-${kind}` : ""}${g ? " g-" + g : ""}"${tip ? ` title="${tip}"` : ""}>${fmt(o.p)}${pm ? `<small class="pm">${pm}</small>` : ""}</span>`;
 }
 // ---- выгодные цены: автоматический лимит по марже и обычным ценам рецепта, либо свой ----
 // сырьё — «покупай до», материал — «продавай от». Две другие цены рецепта — обычные цены сделок за неделю.
@@ -591,12 +594,15 @@ function autoLimit(id) {
     const sell = typical(matId(p.f, p.t, e), "sell"), prev = typical(matId(p.f, p.t - 1, e), "buy");
     if (!sell || !prev) return null;
     const o = economics(p.t, 0, prev.med * c.bf, sell.med, c), d = stone && p.e ? c.mult[p.e - 1] : 1;
-    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
+    // маржа при покупке по цене x (цена за штуку этого камня; переводим в обычный)
+    const mAt = (x) => economics(p.t, x / d, prev.med * c.bf, sell.med, c).margin;
+    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, mAt, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
   }
   const raw = stone ? typicalRaw(p.f, p.t) : typical(rawId(p.f, p.t, e), "buy"), prev = typical(matId(p.f, p.t - 1, e), "buy");
   if (!raw || !prev) return null;
   const o = economics(p.t, raw.med, prev.med * c.bf, 1, c);
-  return { side: "sell", lim: o.minSell(c.m), be: o.minSell(0), why: `при сырье ~${fmt(raw.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
+  const mAt = (x) => economics(p.t, raw.med, prev.med * c.bf, x, c).margin;
+  return { side: "sell", lim: o.minSell(c.m), be: o.minSell(0), mAt, why: `при сырье ~${fmt(raw.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
 }
 function limitOf(id) {
   const a = autoLimit(id), own = num((S.limits || {})[id]), p = parseId(id);
@@ -692,7 +698,16 @@ function renderPricesTable() {
     save(); renderPricesTable();
   })));
   rowNav(cards, ".card[data-id]", pick);
+  fitMargins();
 }
+// маржа рядом с ценой — только если таблица влезает по ширине; иначе она остаётся в подсказке
+function fitMargins() {
+  const tbl = $("p-table"), box = tbl.parentElement;
+  tbl.classList.remove("pm-off");
+  if (box.offsetParent && box.scrollWidth > box.clientWidth + 1) tbl.classList.add("pm-off");
+}
+let fitTimer;
+window.addEventListener("resize", () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => { if (S.view === "prices") fitMargins(); }, 150); });
 function listingFee() { const f = +S.settings.fee; return (f === 0.04 ? 0.065 : f === 0.08 ? 0.105 : f) + SETUP * relists(); }
 function renderPricesWidgets() {
   const box = $("p-widgets"), ids = pricesIds();
