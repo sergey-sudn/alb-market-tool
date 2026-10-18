@@ -658,7 +658,11 @@ function limitIds(ids) {
     const p = parseId(id); if (!p || p.t < 4) continue;
     const e = FAM[p.f].stone ? 0 : p.e;
     out.push(matId(p.f, p.t, e), matId(p.f, p.t - 1, e));
-    if (p.kind === "mat") { if (FAM[p.f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(p.f, p.t, k)); else out.push(rawId(p.f, p.t, e)); }
+    if (p.kind === "mat") {
+      if (FAM[p.f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(p.f, p.t, k)); else out.push(rawId(p.f, p.t, e));
+      // «Крафт тира выше»: этот материал идёт в рецепт T+1 — нужны сырьё и продажа T+1
+      if (p.t < 8) { out.push(matId(p.f, p.t + 1, e)); if (FAM[p.f].stone) for (let k = 0; k <= 3; k++) out.push(rawId(p.f, p.t + 1, k)); else out.push(rawId(p.f, p.t + 1, e)); }
+    }
   }
   return [...new Set(out)];
 }
