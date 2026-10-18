@@ -71,7 +71,7 @@ const DEF = {
 const S = {
   settings: { ...DEF, m: [...DEF.m] },
   view: "refine",
-  pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pItem: null,
+  pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pMat: "resale", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
@@ -79,7 +79,7 @@ const S = {
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -107,6 +107,7 @@ S.pTiers = clean(S.pTiers, ALL_TIERS, [5, 6, 7, 8]);
 S.pEnchs = clean(S.pEnchs, [0, 1, 2, 3], [0]);
 S.rEnchs = clean(S.rEnchs, [0, 1, 2, 3], [0]);
 if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
+if (!["resale", "craft"].includes(S.pMat)) S.pMat = "resale";
 S.settings.buyC = clean(S.settings.buyC, CITIES, [...DEF.buyC]);
 S.settings.sellC = clean(S.settings.sellC, CITIES, [...DEF.sellC]);
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
@@ -545,7 +546,8 @@ function renderPricesControls() {
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дешёвый: там дешевле всего купить своим ордером</span>`
     : `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дешёвый: там дешевле всего купить сразу</span>
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дорогой: там дороже всего продать сразу</span>`;
-  $("p-legend").innerHTML += `<span class="lg-colors">Цвет цены: <b class="g-ok">зелёный</b> — даёт маржу ${nf0.format(calcSettings().m * 100)}%, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Сырьё — для покупки, материал — для продажи, при обычных ценах остальных частей рецепта. Рядом с ценой — маржа переработки: у сырья — если купить его по этой цене, у материала — если сделать его и продать по этой цене. Если таблица не влезает по ширине, маржа — в подсказке</span>`;
+  $("p-legend").innerHTML += `<span class="lg-colors">Рядом с ценой — маржа, если купить по этой цене. <b>Сырьё</b> — с переработкой (остальные части рецепта по обычным ценам), <b>материал</b> — ${S.pMat === "craft" ? "как материал для крафта тира выше (у T8 — перепродажа)" : "с перепродажей своим лотом в лучшем другом городе"}; вторая маржа — в подсказке. Цвет: <b class="g-ok">зелёный</b> — маржа ${nf0.format(calcSettings().m * 100)}% и больше, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Если таблица не влезает по ширине, маржа — в подсказке</span>`;
+  chips($("p-mat"), [["resale", "Перепродажа"], ["craft", "Крафт тира выше"]], (v) => v === S.pMat, (v) => { S.pMat = v; save(); renderPricesControls(); renderPricesTable(); });
   chips($("p-kind"), [["all", "Всё"], ["raw", "Сырьё"], ["mat", "Материал"]], (v) => v === S.pKind, (v) => { S.pKind = v; save(); openPrices(); });
   const parts = [famsText(S.pFams), tiersText(S.pTiers)];
   if (S.pEnchs.join() !== "0") parts.push(S.pEnchs.map((e) => "." + e).join(" "));
@@ -575,14 +577,47 @@ function cityQuotes(id, cities) {
   return { q, minSell, maxBuy, bestS: order ? maxSell : minSell, bestB: order ? minBuy : maxBuy };
 }
 // для зачарованного камня div = 2/4/8: при наведении видно цену в пересчёте на обычный
-function pv(o, kind, best, div = 1, lim = null) {
+// M — что значит маржа у этой цены (marginModel), city — город ячейки
+function pv(o, kind, best, div = 1, M = null, city = "") {
   if (!o) return `<span class="pv none">—</span>`;
   if (o.odd) return `<span class="pv odd" title="Не похоже на реальную цену: обычно здесь торгуют около ${fmt(o.ref)}. В расчётах не учитывается">${fmt(o.p)}</span>`;
-  // маржа переработки при этой цене: остальные цены рецепта — обычные цены сделок за неделю
-  const g = limGrade(lim, o.p), mg = lim && lim.auto && lim.auto.mAt ? lim.auto.mAt(o.p) : NaN;
+  const r = M ? M.at(o, kind, city) : { m: NaN, g: "" }, mg = r.m, g = r.g || "";
   const pm = isFinite(mg) ? `${mg < 0 ? "−" : ""}${nf0.format(Math.abs(mg * 100))}%` : "";
-  const tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", pm ? `маржа переработки ${pm}: ${lim.auto.side === "buy" ? "купить по этой цене и переработать" : "сделать из сырья и материала тира ниже по обычным ценам и продать по этой цене"}` : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
-  return `<span class="pv${best ? ` best-${kind}` : ""}${g ? " g-" + g : ""}"${tip ? ` title="${tip}"` : ""}>${fmt(o.p)}${pm ? `<small class="pm">${pm}</small>` : ""}</span>`;
+  const tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", pm ? (r.why.includes("%") ? r.why : `${r.why} — маржа ${pm}`) : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
+  return `<span class="pv${best ? ` best-${kind}` : ""}${g ? " g-" + g : ""}"${tip ? ` title="${esc(tip)}"` : ""}>${fmt(o.p)}${pm ? `<small class="pm">${pm}</small>` : ""}</span>`;
+}
+// Сырьё оцениваем как будущую переработку: маржа, если купить по этой цене и переработать (цвет — по порогу «бери до» или своему лимиту).
+// Материал — как товар: маржа перепродажи, если купить по этой цене и продать своим лотом в лучшем другом городе из «продаю».
+function marginModel(id, L) {
+  const p = parseId(id); if (!p) return null;
+  if (p.kind === "raw") return {
+    at: (o) => ({ m: L && L.auto && L.auto.mAt ? L.auto.mAt(o.p) : NaN, g: limGrade(L, o.p), why: "переработка: купить по этой цене и переработать" }),
+  };
+  const c = calcSettings(p.f), target = c.m, fee = listingFee(), stone = !!FAM[p.f].stone, e = stone ? 0 : p.e;
+  // перепродажа — как в виджете перепродажи: не дороже обычных цен (P80 за неделю) и где покупают хотя бы ARB_MIN_VOL в день
+  const sells = sellCities().map((cc) => { const o = sellIn(id, cc); return o && { c: cc, p: o.price, vol: o.vol }; })
+    .filter((x) => x && !(isFinite(x.vol) && x.vol < ARB_MIN_VOL)).sort((a, b) => b.p - a.p);
+  // крафт тира выше: этот материал — «тир ниже» в рецепте T+1, сырьё и продажа T+1 — по обычным ценам за неделю
+  const t2 = p.t + 1, up = t2 <= 8 && N[t2] ? {
+    raw: stone ? typicalRaw(p.f, t2) : typical(rawId(p.f, t2, e), "buy"), sell: typical(matId(p.f, t2, e), "sell"), name: itemLabel(matId(p.f, t2, e)),
+  } : null;
+  const grade = (m) => (!isFinite(m) ? "" : m >= target ? "ok" : m >= 0 ? "mid" : "bad");
+  const pct = (m) => `${m < 0 ? "−" : "+"}${nf0.format(Math.abs(m * 100))}%`;
+  return {
+    at: (o, side, city) => {
+      const paid = side === "b" ? (o.p + 1) * orderFee() : o.p, how = side === "b" ? "своим ордером" : "по этому лоту";
+      const dest = sells.find((x) => x.c !== city);
+      const mr = dest ? (dest.p * (1 - fee) - paid) / paid : NaN;
+      const mc = up && up.raw && up.sell ? economics(t2, up.raw.med, paid, up.sell.med, c).margin : NaN;
+      const craft = S.pMat === "craft" && up, m = craft ? mc : mr;
+      const parts = [
+        isFinite(mr) ? `перепродажа ${pct(mr)}: купить ${how}, продать своим лотом в ${dest.c} по ~${fmt(dest.p)}` : "",
+        isFinite(mc) ? `для крафта ${lc1(up.name)} ${pct(mc)}: сырьё T${t2} и продажа по обычным ценам` : "",
+      ].filter(Boolean);
+      if (craft) parts.reverse();
+      return { m, g: grade(m), why: parts.join(" · ") };
+    },
+  };
 }
 // ---- выгодные цены: автоматический лимит по марже и обычным ценам рецепта, либо свой ----
 // сырьё — «покупай до», материал — «продавай от». Две другие цены рецепта — обычные цены сделок за неделю.
@@ -606,7 +641,7 @@ function autoLimit(id) {
 }
 function limitOf(id) {
   const a = autoLimit(id), own = num((S.limits || {})[id]), p = parseId(id);
-  if (isFinite(own) && own > 0) return { side: p && p.kind === "raw" ? "buy" : "sell", lim: own, be: a ? a.be : NaN, auto: a, own: true };
+  if (isFinite(own) && own > 0 && p && p.kind === "raw") return { side: p && p.kind === "raw" ? "buy" : "sell", lim: own, be: a ? a.be : NaN, auto: a, own: true };
   return a && isFinite(a.lim) ? { ...a, auto: a, own: false } : null;
 }
 function limGrade(L, p) {
@@ -631,7 +666,9 @@ function limitLine(id) {
   const L = limitOf(id); if (!L) return "";
   const pre = L.side === "buy" ? "бери до" : "продавай от", mm = nf0.format(calcSettings(parseId(id).f).m * 100);
   const tip = L.own ? `Твой лимит. Расчёт сайта: ${L.auto ? fmt(L.auto.lim) + " для маржи " + mm + "%, " + L.auto.why : "нет данных"}` : `Для маржи ${mm}% ${L.why}. Нажми ✎, чтобы задать свой`;
-  return `<span class="lim-line" title="${esc(tip)}">${pre} <b>${fmt(L.lim)}</b>${L.own ? " (свой)" : ""}${isFinite(L.be) ? ` · безубыток ${fmt(L.be)}` : ""} <button type="button" class="lim-edit" data-lim="${esc(id)}" aria-label="Задать свой лимит">✎</button></span>`;
+  // свой лимит задаётся только для сырья: у материала цвет — по перепродаже, а «продавай от» — справка для продажи своих блоков
+  const raw = L.side === "buy";
+  return `<span class="lim-line" title="${esc(raw ? tip : `Для маржи ${mm}% ${L.auto ? L.auto.why : ""}: от какой цены продавать свои блоки после переработки`)}">${pre} <b>${fmt(L.lim)}</b>${L.own ? " (свой)" : ""}${isFinite(L.be) ? ` · безубыток ${fmt(L.be)}` : ""}${raw ? ` <button type="button" class="lim-edit" data-lim="${esc(id)}" aria-label="Задать свой лимит">✎</button>` : ""}</span>`;
 }
 const stoneDiv = (info) => (info && FAM[info.f].stone && info.kind === "raw" && info.e ? calcSettings(info.f).mult[info.e - 1] || 1 : 1);
 const pa = (o) => o ? `<span class="pa${o.age > maxAge() ? " old" : ""}">${fmtAge(o.age)}</span>` : `<span class="pa"></span>`;
@@ -651,7 +688,7 @@ function renderPricesTable() {
       const info = parseId(id), rec = cur[`${S.settings.server}|${id}`];
       const { q, bestS, bestB } = cityQuotes(id, cities);
       const sel = id === S.pItem ? " sel" : "";
-      const ll = limitLine(id), L = limitOf(id);
+      const ll = limitLine(id), L = limitOf(id), M = marginModel(id, L);
       const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small>${ll}</div></div>`;
       const dv = stoneDiv(info);
       h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td><td class="tagcol"><div class="tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></div></td>`;
@@ -663,8 +700,8 @@ function renderPricesTable() {
         // лучшая цена подсвечивается только там, где эта сторона сделки разрешена в «Условиях»
         const ord = S.pMode === "order", inB = S.settings.buyC.includes(c), inS = S.settings.sellC.includes(c);
         const bs = s && s.p === bestS && s.age <= maxAge() && (ord ? inS : inB), bb = b && b.p === bestB && b.age <= maxAge() && (ord ? inB : inS);
-        h += `<td><div class="cell">${pv(s, "s", bs, dv, L)}${pa(s)}${pv(b, "b", bb, dv, L)}${pa(b)}</div></td>`;
-        if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv, L)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv, L)}${pa(b)}</span></div>`;
+        h += `<td><div class="cell">${pv(s, "s", bs, dv, M, c)}${pa(s)}${pv(b, "b", bb, dv, M, c)}${pa(b)}</div></td>`;
+        if (s || b) m += `<div class="m-city">${cityHtml(c)}<span class="m-v">${pv(s, "s", bs, dv, M, c)}${pa(s)}</span><span class="m-v">${pv(b, "b", bb, dv, M, c)}${pa(b)}</span></div>`;
       }
       if (!rec) m += `<div class="m-line"><span class="k">Загружаю…</span></div>`;
       else if (cities.every((c) => !q[c].s && !q[c].b)) m += `<div class="m-line"><span class="k">Нет цен ни в одном городе</span></div>`;
