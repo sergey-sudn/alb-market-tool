@@ -545,7 +545,7 @@ function renderPricesControls() {
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дешёвый: там дешевле всего купить своим ордером</span>`
     : `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дешёвый: там дешевле всего купить сразу</span>
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дорогой: там дороже всего продать сразу</span>`;
-  $("p-legend").innerHTML += `<span class="lg-colors">Цвет цены: <b class="g-ok">зелёный</b> — даёт маржу ${nf0.format(calcSettings().m * 100)}%, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Сырьё — для покупки, материал — для продажи, при обычных ценах остальных частей рецепта. Рядом с ценой — маржа переработки при ней (если таблица не влезает по ширине — в подсказке при наведении)</span>`;
+  $("p-legend").innerHTML += `<span class="lg-colors">Цвет цены: <b class="g-ok">зелёный</b> — даёт маржу ${nf0.format(calcSettings().m * 100)}%, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Сырьё — для покупки, материал — для продажи, при обычных ценах остальных частей рецепта. Рядом с ценой — маржа переработки: у сырья — если купить его по этой цене, у материала — если сделать его и продать по этой цене. Если таблица не влезает по ширине, маржа — в подсказке</span>`;
   chips($("p-kind"), [["all", "Всё"], ["raw", "Сырьё"], ["mat", "Материал"]], (v) => v === S.pKind, (v) => { S.pKind = v; save(); openPrices(); });
   const parts = [famsText(S.pFams), tiersText(S.pTiers)];
   if (S.pEnchs.join() !== "0") parts.push(S.pEnchs.map((e) => "." + e).join(" "));
@@ -581,7 +581,7 @@ function pv(o, kind, best, div = 1, lim = null) {
   // маржа переработки при этой цене: остальные цены рецепта — обычные цены сделок за неделю
   const g = limGrade(lim, o.p), mg = lim && lim.auto && lim.auto.mAt ? lim.auto.mAt(o.p) : NaN;
   const pm = isFinite(mg) ? `${mg < 0 ? "−" : ""}${nf0.format(Math.abs(mg * 100))}%` : "";
-  const tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", pm ? `маржа ${pm}` : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
+  const tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", pm ? `маржа переработки ${pm}: ${lim.auto.side === "buy" ? "купить по этой цене и переработать" : "сделать из сырья и материала тира ниже по обычным ценам и продать по этой цене"}` : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
   return `<span class="pv${best ? ` best-${kind}` : ""}${g ? " g-" + g : ""}"${tip ? ` title="${tip}"` : ""}>${fmt(o.p)}${pm ? `<small class="pm">${pm}</small>` : ""}</span>`;
 }
 // ---- выгодные цены: автоматический лимит по марже и обычным ценам рецепта, либо свой ----

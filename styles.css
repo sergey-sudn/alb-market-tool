@@ -595,3 +595,4 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid th.cityh small{display:block;font-size:10px;font-weight:500;color:var(--muted);white-space:nowrap}
 .pv .pm{margin-left:4px;font-size:10.5px;font-weight:500;opacity:.8}
 .pm-off .pv .pm{display:none}
+.legend>span.lg-colors{display:block;line-height:1.7}
