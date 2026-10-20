@@ -591,7 +591,7 @@ function pv(o, kind, best, div = 1, M = null, city = "") {
 function marginModel(id, L) {
   const p = parseId(id); if (!p) return null;
   if (p.kind === "raw") return {
-    at: (o) => ({ m: L && L.auto && L.auto.mAt ? L.auto.mAt(o.p) : NaN, g: limGrade(L, o.p), why: "переработка: купить по этой цене и переработать" }),
+    at: (o) => ({ m: L && L.auto && L.auto.mAt ? L.auto.mAt(o.p) : NaN, g: limGrade(L, o.p), why: `переработка: купить по этой цене и переработать${L && L.auto ? ", " + L.auto.why : ""}` }),
   };
   const c = calcSettings(p.f), target = c.m, fee = listingFee(), stone = !!FAM[p.f].stone, e = stone ? 0 : p.e;
   // перепродажа — как в виджете перепродажи: не дороже обычных цен (P80 за неделю) и где покупают хотя бы ARB_MIN_VOL в день
@@ -599,7 +599,7 @@ function marginModel(id, L) {
     .filter((x) => x && !(isFinite(x.vol) && x.vol < ARB_MIN_VOL)).sort((a, b) => b.p - a.p);
   // крафт тира выше: этот материал — «тир ниже» в рецепте T+1, сырьё и продажа T+1 — по обычным ценам за неделю
   const t2 = p.t + 1, up = t2 <= 8 && N[t2] ? {
-    raw: stone ? typicalRaw(p.f, t2) : typical(rawId(p.f, t2, e), "buy"), sell: typical(matId(p.f, t2, e), "sell"), name: itemLabel(matId(p.f, t2, e)),
+    raw: stone ? typicalRaw(p.f, t2, true) : typical(rawId(p.f, t2, e), "buy", true), sell: typical(matId(p.f, t2, e), "sell", true), name: itemLabel(matId(p.f, t2, e)),
   } : null;
   const grade = (m) => (!isFinite(m) ? "" : m >= target ? "ok" : m >= 0 ? "mid" : "bad");
   const pct = (m) => `${m < 0 ? "−" : "+"}${nf0.format(Math.abs(m * 100))}%`;
@@ -626,14 +626,14 @@ function autoLimit(id) {
   const p = parseId(id); if (!p || p.t < 4) return null;
   const c = calcSettings(p.f), stone = !!FAM[p.f].stone, e = stone ? 0 : p.e;
   if (p.kind === "raw") {
-    const sell = typical(matId(p.f, p.t, e), "sell"), prev = typical(matId(p.f, p.t - 1, e), "buy");
+    const sell = typical(matId(p.f, p.t, e), "sell", true), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
     if (!sell || !prev) return null;
     const o = economics(p.t, 0, prev.med * c.bf, sell.med, c), d = stone && p.e ? c.mult[p.e - 1] : 1;
     // маржа при покупке по цене x (цена за штуку этого камня; переводим в обычный)
     const mAt = (x) => economics(p.t, x / d, prev.med * c.bf, sell.med, c).margin;
-    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, mAt, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
+    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, mAt, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} в ${sell.city} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
   }
-  const raw = stone ? typicalRaw(p.f, p.t) : typical(rawId(p.f, p.t, e), "buy"), prev = typical(matId(p.f, p.t - 1, e), "buy");
+  const raw = stone ? typicalRaw(p.f, p.t, true) : typical(rawId(p.f, p.t, e), "buy", true), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
   if (!raw || !prev) return null;
   const o = economics(p.t, raw.med, prev.med * c.bf, 1, c);
   const mAt = (x) => economics(p.t, raw.med, prev.med * c.bf, x, c).margin;
@@ -1310,20 +1310,27 @@ function calcIds(f) {
   return [...new Set(out)];
 }
 // обычные цены по истории сделок за 7 дней: город, где покупают/продают достаточно, и коридор цен
-function typical(id, side) {
+// now = true — «не лучше, чем сейчас»: история отстаёт от рынка на несколько дней, поэтому
+// продажа — не дороже свежего лота, закупка — не дешевле свежего ордера +1
+function typical(id, side, now = false) {
   const list = (side === "buy" ? buyCities() : sellCities()).map((c) => ({ c, h: histStats(id, c) })).filter((x) => x.h && x.h.vol >= MIN_VOL);
   if (!list.length) return null;
   const maxVol = Math.max(...list.map((x) => x.h.vol));
-  const ok = list.filter((x) => x.h.vol >= maxVol * 0.25); // не берём город, где почти не торгуют
-  ok.sort((x, y) => (side === "buy" ? x.h.med - y.h.med : y.h.med - x.h.med));
-  return { city: ok[0].c, ...ok[0].h };
+  const ok = list.filter((x) => x.h.vol >= maxVol * 0.25).map((x) => ({ ...x, v: x.h.med })); // не берём город, где почти не торгуют
+  if (now) for (const x of ok) {
+    const o = liveOf(id, x.c, side === "buy" ? "buy" : "sell");
+    if (!o || o.age > maxAge() || oddPrice(id, x.c, side === "buy" ? "buy" : "sell", o.p)) continue;
+    x.v = side === "buy" ? Math.max(x.v, o.p + 1) : Math.min(x.v, o.p);
+  }
+  ok.sort((x, y) => (side === "buy" ? x.v - y.v : y.v - x.v));
+  return { city: ok[0].c, ...ok[0].h, med: ok[0].v, histMed: ok[0].h.med };
 }
 // у камня — самый выгодный вариант в пересчёте на обычный
-function typicalRaw(f, t) {
-  if (!FAM[f].stone) { const x = typical(rawId(f, t), "buy"); return x && { ...x, k: 0, unit: x.med }; }
+function typicalRaw(f, t, now = false) {
+  if (!FAM[f].stone) { const x = typical(rawId(f, t), "buy", now); return x && { ...x, k: 0, unit: x.med }; }
   const mult = calcSettings(f).mult; let best = null;
   for (let k = 0; k <= 3; k++) {
-    const x = typical(rawId(f, t, k), "buy"); if (!x) continue;
+    const x = typical(rawId(f, t, k), "buy", now); if (!x) continue;
     const d = k ? mult[k - 1] : 1;
     if (!best || x.med / d < best.med) best = { ...x, med: x.med / d, p20: x.p20 / d, p80: x.p80 / d, k, unit: x.med };
   }
