@@ -546,7 +546,7 @@ function renderPricesControls() {
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дешёвый: там дешевле всего купить своим ордером</span>`
     : `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дешёвый: там дешевле всего купить сразу</span>
        <span><span class="ptag b">покупают</span>лучший ордер на закупку. Обведён самый дорогой: там дороже всего продать сразу</span>`;
-  $("p-legend").innerHTML += `<span class="lg-colors">Рядом с ценой — маржа, если купить по этой цене. <b>Сырьё</b> — с переработкой (остальные части рецепта по обычным ценам), <b>материал</b> — ${S.pMat === "craft" ? "как материал для крафта тира выше (у T8 — перепродажа)" : "с перепродажей своим лотом в лучшем другом городе"}; вторая маржа — в подсказке. Цвет: <b class="g-ok">зелёный</b> — маржа ${nf0.format(calcSettings().m * 100)}% и больше, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Если таблица не влезает по ширине, маржа — в подсказке</span>`;
+  $("p-legend").innerHTML += `<span class="lg-colors">Рядом с ценой — маржа, если купить по этой цене. <b>Сырьё</b> — с переработкой: материал тира ниже по обычной цене, продажа — средняя по городам «продаю» с учётом объёма, <b>материал</b> — ${S.pMat === "craft" ? "как материал для крафта тира выше (у T8 — перепродажа)" : "с перепродажей своим лотом в лучшем другом городе"}; вторая маржа — в подсказке. Цвет: <b class="g-ok">зелёный</b> — маржа ${nf0.format(calcSettings().m * 100)}% и больше, <b class="g-mid">жёлтый</b> — в плюсе, <b class="g-bad">красный</b> — в минусе. Если таблица не влезает по ширине, маржа — в подсказке</span>`;
   chips($("p-mat"), [["resale", "Перепродажа"], ["craft", "Крафт тира выше"]], (v) => v === S.pMat, (v) => { S.pMat = v; save(); renderPricesControls(); renderPricesTable(); });
   chips($("p-kind"), [["all", "Всё"], ["raw", "Сырьё"], ["mat", "Материал"]], (v) => v === S.pKind, (v) => { S.pKind = v; save(); openPrices(); });
   const parts = [famsText(S.pFams), tiersText(S.pTiers)];
@@ -599,7 +599,7 @@ function marginModel(id, L) {
     .filter((x) => x && !(isFinite(x.vol) && x.vol < ARB_MIN_VOL)).sort((a, b) => b.p - a.p);
   // крафт тира выше: этот материал — «тир ниже» в рецепте T+1, сырьё и продажа T+1 — по обычным ценам за неделю
   const t2 = p.t + 1, up = t2 <= 8 && N[t2] ? {
-    raw: stone ? typicalRaw(p.f, t2, true) : typical(rawId(p.f, t2, e), "buy", true), sell: typical(matId(p.f, t2, e), "sell", true), name: itemLabel(matId(p.f, t2, e)),
+    raw: stone ? typicalRaw(p.f, t2, true) : typical(rawId(p.f, t2, e), "buy", true), sell: sellAvg(matId(p.f, t2, e)), name: itemLabel(matId(p.f, t2, e)),
   } : null;
   const grade = (m) => (!isFinite(m) ? "" : m >= target ? "ok" : m >= 0 ? "mid" : "bad");
   const pct = (m) => `${m < 0 ? "−" : "+"}${nf0.format(Math.abs(m * 100))}%`;
@@ -612,7 +612,7 @@ function marginModel(id, L) {
       const craft = S.pMat === "craft" && up, m = craft ? mc : mr;
       const parts = [
         isFinite(mr) ? `перепродажа ${pct(mr)}: купить ${how}, продать своим лотом в ${dest.c} по ~${fmt(dest.p)}` : "",
-        isFinite(mc) ? `для крафта ${lc1(up.name)} ${pct(mc)}: сырьё T${t2} и продажа по обычным ценам` : "",
+        isFinite(mc) ? `для крафта ${lc1(up.name)} ${pct(mc)}: сырьё T${t2} по обычной цене, продажа ~${fmt(up.sell.med)} ${up.sell.where}` : "",
       ].filter(Boolean);
       if (craft) parts.reverse();
       return { m, g: grade(m), why: parts.join(" · ") };
@@ -626,12 +626,12 @@ function autoLimit(id) {
   const p = parseId(id); if (!p || p.t < 4) return null;
   const c = calcSettings(p.f), stone = !!FAM[p.f].stone, e = stone ? 0 : p.e;
   if (p.kind === "raw") {
-    const sell = typical(matId(p.f, p.t, e), "sell", true), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
+    const sell = sellAvg(matId(p.f, p.t, e)), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
     if (!sell || !prev) return null;
     const o = economics(p.t, 0, prev.med * c.bf, sell.med, c), d = stone && p.e ? c.mult[p.e - 1] : 1;
     // маржа при покупке по цене x (цена за штуку этого камня; переводим в обычный)
     const mAt = (x) => economics(p.t, x / d, prev.med * c.bf, sell.med, c).margin;
-    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, mAt, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} в ${sell.city} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
+    return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, mAt, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} ${sell.where} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
   }
   const raw = stone ? typicalRaw(p.f, p.t, true) : typical(rawId(p.f, p.t, e), "buy", true), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
   if (!raw || !prev) return null;
@@ -1324,6 +1324,21 @@ function typical(id, side, now = false) {
   }
   ok.sort((x, y) => (side === "buy" ? x.v - y.v : y.v - x.v));
   return { city: ok[0].c, ...ok[0].h, med: ok[0].v, histMed: ok[0].h.med };
+}
+// осторожная оценка продажи: средняя по городам «продаю», взвешенная по объёму продаж.
+// В каждом городе — медиана за неделю, но не дороже свежего лота. Нужна там, где сайт оценивает
+// «выгодно ли вообще», а не называет конкретный город: весь объём в самом дорогом городе не продашь
+function sellAvg(id) {
+  const list = sellCities().map((c) => ({ c, h: histStats(id, c) })).filter((x) => x.h && x.h.vol >= MIN_VOL);
+  if (!list.length) return null;
+  let sum = 0, w = 0;
+  for (const x of list) {
+    let v = x.h.med;
+    const o = liveOf(id, x.c, "sell");
+    if (o && o.age <= maxAge() && !oddPrice(id, x.c, "sell", o.p)) v = Math.min(v, o.p);
+    sum += v * x.h.vol; w += x.h.vol;
+  }
+  return { med: sum / w, vol: w, n: list.length, where: list.length > 1 ? `в среднем по ${list.length} ${plural(list.length, ["городу", "городам", "городам"])}` : `в ${list[0].c}` };
 }
 // у камня — самый выгодный вариант в пересчёте на обычный
 function typicalRaw(f, t, now = false) {
