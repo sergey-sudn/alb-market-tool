@@ -1326,19 +1326,14 @@ function typical(id, side, now = false) {
   return { city: ok[0].c, ...ok[0].h, med: ok[0].v, histMed: ok[0].h.med };
 }
 // осторожная оценка продажи: средняя по городам «продаю», взвешенная по объёму продаж.
-// В каждом городе — медиана за неделю, но не дороже свежего лота. Нужна там, где сайт оценивает
-// «выгодно ли вообще», а не называет конкретный город: весь объём в самом дорогом городе не продашь
+// В каждом городе — цена продажи своим лотом, как в «Переработке»: свежий лот, но не дороже P80 сделок за неделю.
+// Нужна там, где сайт оценивает «выгодно ли вообще», а не называет конкретный город: весь объём в самом дорогом городе не продашь
 function sellAvg(id) {
-  const list = sellCities().map((c) => ({ c, h: histStats(id, c) })).filter((x) => x.h && x.h.vol >= MIN_VOL);
+  const list = sellCities().map((c) => sellIn(id, c)).filter((o) => o && isFinite(o.vol) && o.vol >= MIN_VOL);
   if (!list.length) return null;
   let sum = 0, w = 0;
-  for (const x of list) {
-    let v = x.h.med;
-    const o = liveOf(id, x.c, "sell");
-    if (o && o.age <= maxAge() && !oddPrice(id, x.c, "sell", o.p)) v = Math.min(v, o.p);
-    sum += v * x.h.vol; w += x.h.vol;
-  }
-  return { med: sum / w, vol: w, n: list.length, where: list.length > 1 ? `в среднем по ${list.length} ${plural(list.length, ["городу", "городам", "городам"])}` : `в ${list[0].c}` };
+  for (const o of list) { sum += o.price * o.vol; w += o.vol; }
+  return { med: sum / w, vol: w, n: list.length, where: list.length > 1 ? `в среднем по ${list.length} ${plural(list.length, ["городу", "городам", "городам"])}` : `в ${list[0].city}` };
 }
 // у камня — самый выгодный вариант в пересчёте на обычный
 function typicalRaw(f, t, now = false) {
