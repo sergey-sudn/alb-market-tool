@@ -597,3 +597,7 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .pv .pm{margin-left:4px;font-size:10.5px;font-weight:500;opacity:.8}
 .pm-off .pv .pm{display:none}
 .legend>span.lg-colors{display:block;line-height:1.7}
+/* «Цены»: разделитель между тирами одного ресурса */
+.grid.prices tr.tstart td{border-top:2px solid color-mix(in srgb,var(--tc) 55%,var(--line))}
+.tdiv{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--tc);font-size:12px;margin-top:4px}
+.tdiv::after{content:"";flex:1;height:2px;border-radius:1px;background:color-mix(in srgb,var(--tc) 45%,transparent)}

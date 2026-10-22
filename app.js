@@ -688,14 +688,17 @@ function renderPricesTable() {
       h += `<tr class="group"><td colspan="${cities.length + 2}">${FAM[g.f].tab}<span>бонусный город: ${FAM[g.f].city}</span></td></tr>`;
       m += `<div class="k">${FAM[g.f].tab} · бонусный город ${FAM[g.f].city}</div>`;
     }
+    let prevT = null; // новый тир внутри ресурса — линия-разделитель цвета тира
     for (const id of g.ids) {
       const info = parseId(id), rec = cur[`${S.settings.server}|${id}`];
+      const tNew = info.t !== prevT, tStart = prevT !== null && tNew; prevT = info.t;
+      if (tNew) m += `<div class="k tdiv" style="--tc:var(--t${info.t})">T${info.t}</div>`;
       const { q, bestS, bestB } = cityQuotes(id, cities);
       const sel = id === S.pItem ? " sel" : "";
       const ll = limitLine(id), L = limitOf(id), M = marginModel(id, L);
       const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small>${ll}</div></div>`;
       const dv = stoneDiv(info);
-      h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}"><td>${head}</td><td class="tagcol"><div class="tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></div></td>`;
+      h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}${tStart ? " tstart" : ""}"${tStart ? ` style="--tc:var(--t${info.t})"` : ""}><td>${head}</td><td class="tagcol"><div class="tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></div></td>`;
       m += `<section class="panel card${sel}" tabindex="0" data-id="${esc(id)}"><div class="card-h">${head.replace('<div class="item">', "").replace(/<\/div>$/, "")}</div>`
         + (rec ? `<div class="m-city m-headrow"><span></span><span class="ptag s">продают</span><span class="ptag b">покупают</span></div>` : "");
       for (const c of cities) {
