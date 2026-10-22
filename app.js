@@ -268,7 +268,10 @@ function refStats(id, city) {
 const ORDER_MIN = 0.6, LOT_MAX = 1.3;
 function oddPrice(id, city, side, p) {
   const ref = refStats(id, city); if (!ref) return null;
-  if (side === "buy" && p < ref.med * ORDER_MIN) return ref;
+  // истории ордеров нет — есть только средние цены всех сделок за день (и с лотов, и в ордера).
+  // Ордер сравниваем с нижней границей сделок (P20), а не с медианой: на рынке с большим разрывом
+  // между лотами и ордерами честный ордер легко оказывается ниже 60% медианы
+  if (side === "buy" && p < ref.p20 * ORDER_MIN) return ref;
   if (side === "sell" && p > ref.p80 * LOT_MAX) return ref;
   return null;
 }
@@ -563,8 +566,8 @@ function cityQuotes(id, cities) {
   const q = {};
   for (const c of cities) {
     const s = liveOf(id, c, "sell"), b = liveOf(id, c, "buy");
-    if (s) { const r = oddPrice(id, c, "sell", s.p); if (r) { s.odd = true; s.ref = r.med; } }
-    if (b) { const r = oddPrice(id, c, "buy", b.p); if (r) { b.odd = true; b.ref = r.med; } }
+    if (s) { const r = oddPrice(id, c, "sell", s.p); if (r) { s.odd = true; s.ref = r; } }
+    if (b) { const r = oddPrice(id, c, "buy", b.p); if (r) { b.odd = true; b.ref = r; } }
     q[c] = { s, b };
     // лучшая цена для покупки — только среди городов «покупаю», для продажи — среди «продаю»
     const canB = S.settings.buyC.includes(c), canS = S.settings.sellC.includes(c);
@@ -580,7 +583,12 @@ function cityQuotes(id, cities) {
 // M — что значит маржа у этой цены (marginModel), city — город ячейки
 function pv(o, kind, best, div = 1, M = null, city = "") {
   if (!o) return `<span class="pv none">—</span>`;
-  if (o.odd) return `<span class="pv odd" title="Не похоже на реальную цену: обычно здесь торгуют около ${fmt(o.ref)}. В расчётах не учитывается">${fmt(o.p)}</span>`;
+  if (o.odd) {
+    const r = o.ref, tip = kind === "b"
+      ? `Ордер сильно ниже обычных сделок: за неделю 80% сделок прошли дороже ${fmt(r.p20)}, а этот ордер меньше 60% от этого. Скорее всего, устаревший или ловушка. В расчётах не учитывается`
+      : `Лот сильно дороже обычных сделок: за неделю 80% сделок прошли не дороже ${fmt(r.p80)}, а этот лот выше этого больше чем на 30%. В расчётах не учитывается`;
+    return `<span class="pv odd" title="${esc(tip)}">${fmt(o.p)}</span>`;
+  }
   const r = M ? M.at(o, kind, city) : { m: NaN, g: "" }, mg = r.m, g = r.g || "";
   const pm = isFinite(mg) ? `${mg < 0 ? "−" : ""}${nf0.format(Math.abs(mg * 100))}%` : "";
   const tip = [div > 1 ? `как .0: ${fmt(o.p / div)}` : "", pm ? (r.why.includes("%") ? r.why : `${r.why} — маржа ${pm}`) : "", g ? LIM_TXT[g] : ""].filter(Boolean).join(" · ");
