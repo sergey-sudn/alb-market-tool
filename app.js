@@ -65,7 +65,7 @@ const DEF = {
   server: "europe", mode: "safe", age: 24,
   // где покупаю и где продаю — отдельно; по умолчанию пять основных городов
   buyC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"], sellC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"],
-  rrr: "0.367", rrrc: 36.7, fee: "0.065", station: 0, margin: 10, buffer: 5, order: true, m: [2, 4, 8],
+  rrr: "0.367", rrrc: 36.7, fee: "0.065", food: 0, margin: 10, buffer: 5, order: true, m: [2, 4, 8],
   bonusFam: "", bonusPct: 10, relist: 0,
 };
 const S = {
@@ -91,6 +91,7 @@ try {
         S.settings.buyC = [...DEF.buyC, ...extra]; S.settings.sellC = [...DEF.sellC, ...extra];
       }
       delete S.settings.caerleon; delete S.settings.brecilien;
+      delete S.settings.station; // раньше — серебро за 1 крафт на все тиры; теперь плата за 100 еды (food)
     }
     for (const k of KEYS) if (k in saved) S[k] = saved[k];
     if (saved.jf) S.jf = { ...S.jf, ...saved.jf };
@@ -383,20 +384,26 @@ function calcSettings(f) {
   if (bonus) { const pb = 1 / (1 - r) - 1 + (num(st.bonusPct) || 0) / 100; r = 1 - 1 / (1 + pb); }
   return {
     // перевыставления дорожают только для своих лотов (налог 6,5% / 10,5%), продажа в чужой ордер их не требует
-    k: 1 - r, r, bonus, fee: +st.fee + ([0.065, 0.105].includes(+st.fee) ? SETUP * relists() : 0), station: num(st.station) || 0, m: (num(st.margin) || 0) / 100,
+    k: 1 - r, r, bonus, fee: +st.fee + ([0.065, 0.105].includes(+st.fee) ? SETUP * relists() : 0), food: num(st.food) || 0, stone: !!(f && FAM[f].stone), m: (num(st.margin) || 0) / 100,
     buf: (num(st.buffer) || 0) / 100, bf: st.order ? orderFee() : 1, mult: st.m.map((x) => num(x) || 1),
   };
 }
-function economics(t, raw, prevEff, sell, c) {
-  const n = N[t];
-  const cost = (n * raw * c.bf + prevEff) * c.k + c.station;
+// плата станции за 1 шт. на выходе: еда = ценность предмета × 0,1125, платим за каждые 100 еды.
+// Ценность материала удваивается с тиром и уровнем зачарования: T4 — 16, T5 — 32 … T8 — 256, .1/.2/.3 — ×2/×4/×8.
+// Зачарованный камень даёт обычные блоки, поэтому у камня зачарование не считается
+const NUTRITION = 0.1125;
+function stationFee(t, e, c) { return c.food ? c.food / 100 * NUTRITION * 2 ** (t + (c.stone ? 0 : e || 0)) : 0; }
+function economics(t, raw, prevEff, sell, c, e = 0) {
+  const n = N[t], station = stationFee(t, e, c);
+  const cost = (n * raw * c.bf + prevEff) * c.k + station;
   const effSell = sell * (1 - c.buf) * (1 - c.fee);
   const profit = effSell - cost;
   const need = (m) => effSell / (1 + m);
   return {
     cost, effSell, profit, margin: profit / cost, capital: (n * raw * c.bf + prevEff) * c.k * STACK,
-    maxRaw: (m) => ((need(m) - c.station) / c.k - prevEff) / (n * c.bf),
-    maxPrev: (m) => ((need(m) - c.station) / c.k - n * raw * c.bf) / c.bf,
+    station,
+    maxRaw: (m) => ((need(m) - station) / c.k - prevEff) / (n * c.bf),
+    maxPrev: (m) => ((need(m) - station) / c.k - n * raw * c.bf) / c.bf,
     minSell: (m) => cost * (1 + m) / ((1 - c.buf) * (1 - c.fee)),
   };
 }
@@ -616,7 +623,7 @@ function marginModel(id, L) {
       const paid = side === "b" ? (o.p + 1) * orderFee() : o.p, how = side === "b" ? "своим ордером" : "по этому лоту";
       const dest = sells.find((x) => x.c !== city);
       const mr = dest ? (dest.p * (1 - fee) - paid) / paid : NaN;
-      const mc = up && up.raw && up.sell ? economics(t2, up.raw.med, paid, up.sell.med, c).margin : NaN;
+      const mc = up && up.raw && up.sell ? economics(t2, up.raw.med, paid, up.sell.med, c, e).margin : NaN;
       const craft = S.pMat === "craft" && up, m = craft ? mc : mr;
       const parts = [
         isFinite(mr) ? `перепродажа ${pct(mr)}: купить ${how}, продать своим лотом в ${dest.c} по ~${fmt(dest.p)}` : "",
@@ -636,15 +643,15 @@ function autoLimit(id) {
   if (p.kind === "raw") {
     const sell = sellAvg(matId(p.f, p.t, e)), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
     if (!sell || !prev) return null;
-    const o = economics(p.t, 0, prev.med * c.bf, sell.med, c), d = stone && p.e ? c.mult[p.e - 1] : 1;
+    const o = economics(p.t, 0, prev.med * c.bf, sell.med, c, e), d = stone && p.e ? c.mult[p.e - 1] : 1;
     // маржа при покупке по цене x (цена за штуку этого камня; переводим в обычный)
-    const mAt = (x) => economics(p.t, x / d, prev.med * c.bf, sell.med, c).margin;
+    const mAt = (x) => economics(p.t, x / d, prev.med * c.bf, sell.med, c, e).margin;
     return { side: "buy", lim: o.maxRaw(c.m) * d, be: o.maxRaw(0) * d, mAt, why: `при продаже ${lc1(itemLabel(matId(p.f, p.t, e)))} ~${fmt(sell.med)} ${sell.where} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
   }
   const raw = stone ? typicalRaw(p.f, p.t, true) : typical(rawId(p.f, p.t, e), "buy", true), prev = typical(matId(p.f, p.t - 1, e), "buy", true);
   if (!raw || !prev) return null;
-  const o = economics(p.t, raw.med, prev.med * c.bf, 1, c);
-  const mAt = (x) => economics(p.t, raw.med, prev.med * c.bf, x, c).margin;
+  const o = economics(p.t, raw.med, prev.med * c.bf, 1, c, e);
+  const mAt = (x) => economics(p.t, raw.med, prev.med * c.bf, x, c, e).margin;
   return { side: "sell", lim: o.minSell(c.m), be: o.minSell(0), mAt, why: `при сырье ~${fmt(raw.med)} и ${lc1(itemLabel(matId(p.f, p.t - 1, e)))} ~${fmt(prev.med)}` };
 }
 function limitOf(id) {
@@ -881,7 +888,7 @@ function ownCost(f, t, e) {
   if (t < 3) return null;
   const c = calcSettings(f), raw = pickRaw(f, t, e), prev = pickBuy(matId(f, t - 1, e));
   if (!raw || !prev) return null;
-  return { cost: economics(t, raw.paid, prev.paid, 1, { ...c, bf: 1 }).cost, raw, prev };
+  return { cost: economics(t, raw.paid, prev.paid, 1, { ...c, bf: 1 }, e).cost, raw, prev };
 }
 const OWN_BETTER = 0.03;
 function refineAll() {
@@ -891,10 +898,10 @@ function refineAll() {
     const raw = pickRaw(f, t, e), prev = pickBuy(matId(f, t - 1, e)), sell = pickSell(matId(f, t, e));
     const row = { f, t, e, c, raw, prev, sell, ok: !!(raw && prev && sell), id: matId(f, t, e) };
     if (row.ok) {
-      Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }));
+      Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }, e));
       const own = ownCost(f, t - 1, e);
       if (own && own.cost < prev.paid * (1 - OWN_BETTER)) {
-        row.own = { ...own, save: 1 - own.cost / prev.paid, profit: economics(t, raw.paid, own.cost, sell.price, { ...c, bf: 1 }).profit };
+        row.own = { ...own, save: 1 - own.cost / prev.paid, profit: economics(t, raw.paid, own.cost, sell.price, { ...c, bf: 1 }, e).profit };
       }
     }
     rows.push(row);
@@ -1008,7 +1015,7 @@ function focusInfo(r) {
   const c = r.c, pb = 1 / c.k - 1, kf = 1 / (1 + pb + 0.59);
   const inputs = N[r.t] * r.raw.paid + r.prev.paid, m = stoneMult(r);
   const F = FOCUS[FAM[r.f].stone ? r.t : r.t + r.e] || 0, perOut = F / m;
-  const costF = inputs * kf + c.station, gain = inputs * (c.k - kf);
+  const costF = inputs * kf + stationFee(r.t, r.e, c), gain = inputs * (c.k - kf);
   return { kf, rf: 1 - kf, costF, profit: r.effSell - costF, gain, perOut, perPoint: perOut ? gain / perOut : NaN, stackFocus: perOut * STACK };
 }
 function goCalc(f, t, key) {
@@ -1105,8 +1112,8 @@ function applyPick(r) {
   if (p.sellCity) sell = sellIn(r.id, p.sellCity);
   const row = { ...r, raw, prev, sell, ok: !!(raw && prev && sell), custom: true, best: r, picked: p };
   if (row.ok) {
-    Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }));
-    if (r.own && !p.prevOwn) row.own = { ...r.own, profit: economics(t, raw.paid, r.own.cost, sell.price, { ...c, bf: 1 }).profit };
+    Object.assign(row, economics(t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }, e));
+    if (r.own && !p.prevOwn) row.own = { ...r.own, profit: economics(t, raw.paid, r.own.cost, sell.price, { ...c, bf: 1 }, e).profit };
     if (p.prevOwn) row.own = null;
   } else Object.assign(row, { profit: NaN, margin: NaN, cost: NaN });
   return row;
@@ -1172,7 +1179,7 @@ function detHtml(r) {
       + kv("Прибыль за стак 999", fmtBig(r.profit * STACK), cls)
       + kv("Маржа", nf0.format(r.margin * 100) + "%", cls)
       + kv("Себестоимость 1 шт.", fmt(r.cost))
-      + `<p class="dn">(сырьё ${fmt(rawPart)} + тир ниже ${fmt(prevPart)}${r.raw.fee > 1 || r.prev.fee > 1 ? ", с комиссией ордера" : ""}) × (1 − возврат ${fmtPct(c.r)})${c.station ? ` + станция ${fmt(c.station)}` : ""}</p>`
+      + `<p class="dn">(сырьё ${fmt(rawPart)} + тир ниже ${fmt(prevPart)}${r.raw.fee > 1 || r.prev.fee > 1 ? ", с комиссией ордера" : ""}) × (1 − возврат ${fmtPct(c.r)})${r.station ? ` + станция ${fmt(r.station)}` : ""}</p>`
       + kv("Вложить на стак", fmtBig(r.capital, false))
       + (r.own ? kv("Если тир ниже сделать самому", fmtBig(r.own.profit * STACK) + " за стак", "pos") : "")
       + focusKv(r)
@@ -1587,7 +1594,7 @@ function renderBudgetOut() {
   const st = t && calcState[t];
   if (!st || !st.o || !(B > 0)) { out.innerHTML = `<div><span>${!(B > 0) ? "Укажи бюджет" : "Заполни цены для этого тира"}</span><b></b></div>`; if ($("b-hint")) $("b-hint").textContent = ""; return; }
   const set = N[t] * st.raw * c.bf + st.prevEff;
-  const sets = B / (set + c.station / c.k), outputs = sets / c.k, profit = outputs * st.o.profit;
+  const sets = B / (set + st.o.station / c.k), outputs = sets / c.k, profit = outputs * st.o.profit;
   const cls = profit >= 0 ? "pos" : "neg";
   out.innerHTML = `<div><span>${esc(itemLabel(rawId(f, t)))}</span><b>${nf0.format(sets * N[t])} шт.</b></div>`
     + `<div><span>${esc(itemLabel(matId(f, t - 1)))}${st.own ? " (свой)" : ""}</span><b>${nf0.format(sets)} шт.</b></div>`
@@ -1816,7 +1823,7 @@ async function addEntry(tg) {
     await ensure(ids, { history: true });
     const c = calcSettings(tg.f), raw = pickRaw(tg.f, tg.t, tg.e), prev = pickBuy(matId(tg.f, tg.t - 1, tg.e)), sell = pickSell(matId(tg.f, tg.t, tg.e));
     if (raw && prev && sell) {
-      const o = economics(tg.t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 });
+      const o = economics(tg.t, raw.paid, prev.paid, sell.price, { ...c, bf: 1 }, tg.e);
       cy.fc = { raw: raw.price, prev: prev.price, sell: sell.price, profit: o.profit, margin: o.margin };
     }
   }
@@ -1882,17 +1889,23 @@ function renderCityGrid() {
     st[side] = next; rPick.clear(); save(); rerenderAll();
   }));
 }
+// подсказка под платой станции: сколько это серебра за 1 шт. по тирам
+function foodHint() {
+  const f = num(S.settings.food) || 0, el = $("s-food-hint"); if (!el) return;
+  el.textContent = f > 0 ? `За 1 материал .0: ${[4, 5, 6, 7, 8].map((t) => `T${t} — ${fmt(stationFee(t, 0, { food: f }))}`).join(", ")}. Зачарование .1/.2/.3 — ×2/×4/×8, у камня не меняется`
+    : "Написана на станке. Сайт сам посчитает плату для каждого тира";
+}
 function bindSettings() {
   const st = S.settings;
   $("s-server").value = st.server; renderCityGrid();
   $("s-mode").value = st.mode; $("s-age").value = st.age;
-  $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-station").value = st.station;
+  $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-food").value = st.food ?? 0; foodHint();
   $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-relist").value = st.relist ?? 0; $("s-buy").value = st.order ? "order" : "now";
   $("s-bfam").value = st.bonusFam || ""; $("s-bpct").value = String(st.bonusPct || 10);
   ["s-m1", "s-m2", "s-m3"].forEach((id, i) => ($(id).value = st.m[i]));
   const on = (id, fn, ev = "input") => $(id).addEventListener(ev, (e) => { fn(e.target); save(); rerenderAll(); });
   on("s-rrr", (el) => (st.rrr = el.value), "change"); on("s-rrrc", (el) => (st.rrrc = el.value));
-  on("s-fee", (el) => (st.fee = el.value), "change"); on("s-station", (el) => (st.station = el.value));
+  on("s-fee", (el) => (st.fee = el.value), "change"); on("s-food", (el) => { st.food = el.value; foodHint(); });
   on("s-margin", (el) => (st.margin = el.value)); on("s-buffer", (el) => (st.buffer = el.value)); on("s-relist", (el) => (st.relist = el.value));
   on("s-buy", (el) => (st.order = el.value === "order"), "change"); on("s-age", (el) => (st.age = el.value));
   on("s-mode", (el) => (st.mode = el.value), "change");
