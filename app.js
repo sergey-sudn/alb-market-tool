@@ -69,19 +69,20 @@ const DEF = {
   buyC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"], sellC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"],
   rrr: "0.367", rrrc: 36.7, fee: "0.065", food: 0, margin: 10, buffer: 5, order: true, m: [2, 4, 8],
   bonusFam: "", bonusPct: 10, relist: 0,
+  tabs: { pot: false, fish: false }, // дополнительные вкладки — по умолчанию скрыты
 };
 const S = {
   settings: { ...DEF, m: [...DEF.m] },
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pMat: "resale", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
-  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market",
+  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["fishWeed", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["fishWeed", "potWhere", "potFocus", "potPlus", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -112,6 +113,7 @@ S.rEnchs = clean(S.rEnchs, ENCHS, [0]);
 if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
 if (!["resale", "craft"].includes(S.pMat)) S.pMat = "resale";
 S.settings.buyC = clean(S.settings.buyC, CITIES, [...DEF.buyC]);
+S.settings.tabs = { ...DEF.tabs, ...(S.settings.tabs || {}) };
 S.settings.sellC = clean(S.settings.sellC, CITIES, [...DEF.sellC]);
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
 S.cTiers = clean(S.cTiers, REFINE_TIERS, [5, 6, 7, 8]);
@@ -1877,6 +1879,7 @@ function rerenderAll() {
   if (S.view === "calc") { renderCalcControls(); updateCalc(); }
   if (S.view === "journal") renderJournal();
   if (S.view === "fish") renderFish();
+  if (S.view === "pot") renderPot();
   renderTicker();
 }
 // «Условия»: где покупаю и где продаю — по галочке на город. Хотя бы один город в каждом списке остаётся
@@ -1901,6 +1904,10 @@ function foodHint() {
 function bindSettings() {
   const st = S.settings;
   $("s-server").value = st.server; renderCityGrid();
+  for (const v of OPT_VIEWS) {
+    const el = $(`s-tab-${v}`); el.checked = viewOn(v);
+    el.addEventListener("change", () => { st.tabs = { ...st.tabs, [v]: el.checked }; save(); applyTabs(); if (!el.checked && S.view === v) location.hash = "refine"; });
+  }
   $("s-mode").value = st.mode; $("s-age").value = st.age;
   $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-food").value = st.food ?? 0; foodHint();
   $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-relist").value = st.relist ?? 0; $("s-buy").value = st.order ? "order" : "now";
@@ -1919,7 +1926,7 @@ function bindSettings() {
   $("open-settings").addEventListener("click", () => { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", ""); });
   dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
-  document.querySelectorAll("[data-reload]").forEach((b) => b.addEventListener("click", () => (b.dataset.reload === "prices" ? openPrices(true) : b.dataset.reload === "fish" ? openFish(true) : openRefine(true))));
+  document.querySelectorAll("[data-reload]").forEach((b) => b.addEventListener("click", () => ({ prices: openPrices, fish: openFish, pot: openPot }[b.dataset.reload] || openRefine)(true)));
   document.querySelectorAll("[data-open-sheet]").forEach((b) => b.addEventListener("click", () => openSheet(b.dataset.openSheet)));
   document.querySelectorAll("[data-close-sheet]").forEach((b) => b.addEventListener("click", closeSheet));
   $("scrim").addEventListener("click", closeSheet);
@@ -2022,10 +2029,81 @@ async function openFish(force = false) {
   if (S.view === "fish") renderFish();
 }
 
-const VIEWS = ["prices", "refine", "calc", "fish", "journal"];
+// ---------- вкладка «Зелья» ----------
+// Рецепты — из игровых данных: [id, фокус за крафт, зелий за крафт, [[ингредиент, кол-во]…]]
+const POTS = [["T5_POTION_ACID",294,10,[["T5_ALCHEMY_RARE_DIREBEAR",1],["T5_TEASEL",48],["T4_BURDOCK",24],["T4_MILK",12]]],["T7_POTION_ACID",1296,10,[["T7_ALCHEMY_RARE_DIREBEAR",1],["T7_MULLEIN",144],["T6_FOXGLOVE",72],["T6_ALCOHOL",72],["T6_MILK",36],["T7_ALCOHOL",36]]],["T4_POTION_BERSERK",56,10,[["T3_ALCHEMY_RARE_WEREWOLF",1],["T4_BURDOCK",16]]],["T6_POTION_BERSERK",298,10,[["T5_ALCHEMY_RARE_WEREWOLF",1],["T6_FOXGLOVE",48],["T2_AGARIC",24],["T6_ALCOHOL",12]]],["T8_POTION_BERSERK",1307,10,[["T7_ALCHEMY_RARE_WEREWOLF",1],["T8_YARROW",144],["T3_COMFREY",72],["T6_ALCOHOL",72],["T7_ALCOHOL",36],["T8_ALCOHOL",36]]],["T8_POTION_CLEANSE",1272,5,[["T8_YARROW",72],["T7_MULLEIN",36],["T5_TEASEL",36],["T8_MILK",18],["T8_ALCOHOL",18]]],["T4_POTION_COOLDOWN",84,5,[["T4_BURDOCK",8],["T3_COMFREY",4]]],["T6_POTION_COOLDOWN",378,5,[["T6_FOXGLOVE",24],["T5_TEASEL",12],["T3_COMFREY",12],["T6_MILK",6]]],["T8_POTION_COOLDOWN",1272,5,[["T8_YARROW",72],["T7_MULLEIN",36],["T5_TEASEL",36],["T8_MILK",18],["T8_ALCOHOL",18]]],["T4_POTION_ENERGY",210,5,[["T4_BURDOCK",24],["T4_MILK",6]]],["T6_POTION_ENERGY",768,5,[["T6_FOXGLOVE",72],["T6_MILK",18],["T6_ALCOHOL",18]]],["T4_POTION_GATHER",61,10,[["T3_ALCHEMY_RARE_ELEMENTAL",1],["T4_BUTTER",16]]],["T6_POTION_GATHER",310,10,[["T5_ALCHEMY_RARE_ELEMENTAL",1],["T6_BUTTER",48],["T6_FOXGLOVE",24],["T5_TEASEL",12]]],["T8_POTION_GATHER",1319,10,[["T7_ALCHEMY_RARE_ELEMENTAL",1],["T8_BUTTER",144],["T8_YARROW",72],["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T8_ALCOHOL",36]]],["T4_POTION_HEAL",210,5,[["T4_BURDOCK",24],["T3_EGG",6]]],["T6_POTION_HEAL",768,5,[["T6_FOXGLOVE",72],["T5_EGG",18],["T6_ALCOHOL",18]]],["T4_POTION_LAVA",56,10,[["T3_ALCHEMY_RARE_IMP",1],["T4_MILK",16]]],["T6_POTION_LAVA",294,10,[["T5_ALCHEMY_RARE_IMP",1],["T6_MILK",48],["T6_FOXGLOVE",24],["T3_EGG",12]]],["T8_POTION_LAVA",1272,10,[["T7_ALCHEMY_RARE_IMP",1],["T8_MILK",144],["T8_YARROW",72],["T7_MULLEIN",72],["T5_EGG",36],["T8_ALCOHOL",36]]],["T4_POTION_LIFEWARD",56,10,[["T4_ALCHEMY_RARE_DRAGONAREA",1],["T4_BURDOCK",16]]],["T6_POTION_LIFEWARD",294,10,[["T6_ALCHEMY_RARE_DRAGONAREA",1],["T6_FOXGLOVE",48],["T5_TEASEL",24],["T2_AGARIC",12]]],["T8_POTION_LIFEWARD",1296,10,[["T8_ALCHEMY_RARE_DRAGONAREA",1],["T8_YARROW",144],["T7_MULLEIN",72],["T5_TEASEL",72],["T2_AGARIC",36],["T8_ALCOHOL",36]]],["T5_POTION_REVIVE",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T5_EGG",6]]],["T7_POTION_REVIVE",1020,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T5_EGG",18],["T7_ALCOHOL",18]]],["T5_POTION_SLOWFIELD",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T5_EGG",6]]],["T7_POTION_SLOWFIELD",1272,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T4_BURDOCK",36],["T5_EGG",18],["T7_ALCOHOL",18]]],["T5_POTION_STONESKIN",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T4_MILK",6]]],["T7_POTION_STONESKIN",1272,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T4_BURDOCK",36],["T6_MILK",18],["T7_ALCOHOL",18]]],["T4_POTION_TORNADO",56,10,[["T3_ALCHEMY_RARE_EAGLE",1],["T4_BURDOCK",16]]],["T6_POTION_TORNADO",294,10,[["T5_ALCHEMY_RARE_EAGLE",1],["T6_FOXGLOVE",48],["T5_TEASEL",24],["T3_EGG",12]]],["T8_POTION_TORNADO",1296,10,[["T7_ALCHEMY_RARE_EAGLE",1],["T8_YARROW",144],["T7_MULLEIN",72],["T7_ALCOHOL",72],["T5_EGG",36],["T8_ALCOHOL",36]]]];
+// возврат при алхимии: Брецилиэн даёт +15% к крафту зелий (бонус производства 0,18 + 0,15), фокус — ещё +0,59
+const POT_RRR = { brec: [0.248, 0.479], city: [0.152, 0.435] };
+// редкие алхимические ингредиенты (с монстров) в возврат не считаем — не уверены, что они возвращаются
+const isRareAlch = (id) => id.includes("_ALCHEMY_RARE_");
+const potIds = () => [...new Set(POTS.flatMap(([id, , , ing]) => [id, ...ing.map((x) => x[0])]))];
+function potRows() {
+  const c = calcSettings(), [r0, rf] = POT_RRR[S.potWhere] || POT_RRR.brec, r = S.potFocus ? rf : r0;
+  return POTS.map(([id, F, out, ing]) => {
+    const parts = ing.map(([i, n]) => ({ id: i, n, o: pickBuy(i) }));
+    const sell = pickSell(id);
+    if (parts.some((x) => !x.o) || !sell) return { id, ing: parts, sell, ok: false };
+    const keep = (x, rr) => (isRareAlch(x.id) ? 1 : 1 - rr);
+    const cost = parts.reduce((a, x) => a + x.n * x.o.paid * keep(x, r), 0) / out;
+    const net = sell.price * (1 - c.buf) * (1 - c.fee), profit = net - cost;
+    // сколько серебра даёт 1 очко фокуса: экономия ингредиентов от фокуса / фокус на 1 зелье
+    const gain = parts.reduce((a, x) => a + (isRareAlch(x.id) ? 0 : x.n * x.o.paid * (rf - r0)), 0) / out;
+    return { id, ing: parts, sell, ok: true, cost, net, profit, margin: profit / cost, perPoint: F ? gain / (F / out) : NaN, out };
+  });
+}
+function renderPot() {
+  const rows = potRows().sort((a, b) => (a.ok !== b.ok ? (a.ok ? -1 : 1) : (b.margin || -9) - (a.margin || -9)));
+  const shown = S.potPlus ? rows.filter((r) => r.ok && r.profit > 0) : rows, c0 = calcSettings();
+  const seg = (key, items) => `<span class="seg">${items.map(([v, l]) => `<button type="button" data-pk="${key}" data-v="${v}" aria-pressed="${String(S[key]) === String(v)}">${l}</button>`).join("")}</span>`;
+  const [r0, rf] = POT_RRR[S.potWhere] || POT_RRR.brec;
+  $("pot-ctrl").innerHTML = `<span class="fsum">Где варишь</span>${seg("potWhere", [["brec", "Брецилиэн +15%"], ["city", "другой город"]])}`
+    + `<span class="fsum">Фокус</span>${seg("potFocus", [["false", "без фокуса"], ["true", "с фокусом"]])}`
+    + `<label class="switch"><input type="checkbox" id="pot-plus"${S.potPlus ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только в плюсе</span></label>`
+    + `<span class="k">возврат ${fmtPct(S.potFocus ? rf : r0)}</span>`;
+  $("pot-ctrl").querySelectorAll("[data-pk]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.pk; S[k] = k === "potFocus" ? b.dataset.v === "true" : b.dataset.v; save(); renderPot(); }));
+  $("pot-plus").addEventListener("change", (e) => { S.potPlus = e.target.checked; save(); renderPot(); });
+  const ingTxt = (r) => r.ing.map((x) => `${lc1(itemLabel(x.id))} ×${x.n}`).join(" · ");
+  const ingTip = (r) => r.ing.map((x) => `${itemLabel(x.id)} ×${x.n}: ${x.o ? `${fmt(x.o.price)} в ${x.o.city}${x.o.src === "order" ? " (свой ордер)" : ""}` : "нет цены"}`).join("\n") + (r.ok ? `\nНа выходе ${r.out} шт. за крафт` : "");
+  let h = `<thead><tr><th scope="col">Зелье</th><th scope="col">Себестоимость 1 шт.</th><th scope="col">Продажа</th><th scope="col">За 1 шт.</th><th scope="col">Маржа</th><th scope="col" title="Сколько серебра даёт 1 очко фокуса, без учёта специализации">На фокус</th></tr></thead><tbody>`, m = "";
+  if (!shown.length) { h += `<tr><td class="msg" colspan="6">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе при этих условиях."}</td></tr>`; m = `<div class="panel card"><span class="k">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе."}</span></div>`; }
+  for (const r of shown) {
+    const name = `<div class="item">${fishIcon(r.id)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small title="${esc(ingTip(r))}">${esc(ingTxt(r))}</small></div></div>`;
+    const cls = r.ok && r.profit >= 0 ? "pos" : "neg";
+    h += `<tr><td>${name}</td>`
+      + (r.ok ? `<td title="${esc(ingTip(r))}"><span class="v">${fmt(r.cost)}</span></td>${fishCell(r.sell)}<td><b class="${cls}">${fmtSigned(r.profit)}</b></td><td>${marginBar(r, c0.m)}</td><td>${isFinite(r.perPoint) ? `${fmt(r.perPoint)}<small class="k"> за очко</small>` : "—"}</td>`
+        : `<td colspan="5"><span class="empty">нет цен: ${esc([...r.ing.filter((x) => !x.o).map((x) => itemLabel(x.id)), r.sell ? "" : "продажа"].filter(Boolean).join(", "))}</span></td>`) + `</tr>`;
+    m += `<section class="panel card"><div class="card-h">${fishIcon(r.id, 42)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>${esc(ingTxt(r))}</small></div>${r.ok ? `<b style="color:${levelColor(r.margin, r.profit, c0.m)};font-size:18px">${nf0.format(r.margin * 100)}%</b>` : ""}</div>`
+      + (r.ok ? `<div class="m-line"><span class="k">Себестоимость</span><b>${fmt(r.cost)}</b></div><div class="m-line"><span class="k">Продажа</span>${cityHtml(r.sell.city)}<span class="age">${srcAge(r.sell)}</span><b>${fmt(r.sell.price)}</b></div><div class="m-line"><span class="k">За 1 шт.</span><b class="${cls}">${fmtSigned(r.profit)}</b></div>`
+        : `<div class="m-line"><span class="k">не хватает цен</span></div>`) + `</section>`;
+  }
+  $("pot-table").innerHTML = h + "</tbody>";
+  $("pot-cards").innerHTML = m;
+}
+async function openPot(force = false) {
+  renderPot();
+  await ensure(potIds(), { history: true, force });
+  if (S.view === "pot") renderPot();
+}
+
+// дополнительные вкладки включаются в «Условиях»
+const OPT_VIEWS = ["pot", "fish"];
+const viewOn = (v) => !OPT_VIEWS.includes(v) || !!(S.settings.tabs || {})[v];
+function applyTabs() {
+  for (const v of OPT_VIEWS) {
+    const on = viewOn(v);
+    $(`tab-${v}`).hidden = !on;
+    const a = document.querySelector(`.tabbar a[data-view="${v}"]`); if (a) a.hidden = !on;
+  }
+  const n = document.querySelectorAll(".tabbar a:not([hidden])").length;
+  document.querySelector(".tabbar").style.setProperty("--tabs", n);
+}
+
+const VIEWS = ["prices", "refine", "calc", "pot", "fish", "journal"];
 function route() {
   const h = location.hash.replace("#", "");
-  S.view = VIEWS.includes(h) ? h : (VIEWS.includes(S.view) ? S.view : "refine");
+  const ok = (v) => VIEWS.includes(v) && viewOn(v);
+  S.view = ok(h) ? h : (ok(S.view) ? S.view : "refine");
+  if (h && h !== S.view) history.replaceState(null, "", "#" + S.view);
   save(); closeSheet(); hideTip();
   for (const v of VIEWS) {
     $(`view-${v}`).hidden = v !== S.view;
@@ -2038,12 +2116,13 @@ function route() {
   if (S.view === "calc") openCalc();
   if (S.view === "journal") openJournal();
   if (S.view === "fish") openFish();
+  if (S.view === "pot") openPot();
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.view; }));
 window.addEventListener("hashchange", route);
 
 setTheme(document.documentElement.dataset.theme === "aurora" ? "aurora" : "glass");
-bindSettings(); sumHint();
+bindSettings(); sumHint(); applyTabs();
 if (!location.hash) history.replaceState(null, "", "#" + (VIEWS.includes(S.view) ? S.view : "refine"));
 route();
 setTimeout(loadTicker, 1200);
