@@ -27,6 +27,8 @@ const FAM_ICON = {
   hide: "M7 4c1.5 1 3.5 1.5 5 0 1.5 1.5 3.5 1 5 0l1.5 5-2 3 1 8H7.5l1-8-2-3z",
 };
 const N = { 2: 1, 3: 2, 4: 2, 5: 3, 6: 4, 7: 5, 8: 5 };
+// зачарования: .4 бывает у всех ресурсов, кроме камня (у камня — до .3)
+const ENCHS = [0, 1, 2, 3, 4];
 const REFINE_TIERS = [4, 5, 6, 7, 8];
 const ALL_TIERS = [2, 3, 4, 5, 6, 7, 8];
 const STACK = 999;
@@ -105,8 +107,8 @@ const clean = (arr, allowed, fallback) => { const a = Array.isArray(arr) ? arr.f
 S.pFams = clean(S.pFams, FAMS, ["stone"]);
 S.rFams = clean(S.rFams, FAMS, [...FAMS]);
 S.pTiers = clean(S.pTiers, ALL_TIERS, [5, 6, 7, 8]);
-S.pEnchs = clean(S.pEnchs, [0, 1, 2, 3], [0]);
-S.rEnchs = clean(S.rEnchs, [0, 1, 2, 3], [0]);
+S.pEnchs = clean(S.pEnchs, ENCHS, [0]);
+S.rEnchs = clean(S.rEnchs, ENCHS, [0]);
 if (!["order", "now"].includes(S.pMode)) S.pMode = "order";
 if (!["resale", "craft"].includes(S.pMat)) S.pMat = "resale";
 S.settings.buyC = clean(S.settings.buyC, CITIES, [...DEF.buyC]);
@@ -455,7 +457,7 @@ function toggleIn(arr, v, order) {
 }
 const tierItems = (tiers) => tiers.map((t) => [t, `T${t}`]);
 const tierCls = (t) => `tc t${t}`;
-const ENCH_ITEMS = [[0, ".0"], [1, ".1"], [2, ".2"], [3, ".3"]];
+const ENCH_ITEMS = ENCHS.map((e) => [e, "." + e]);
 const enchCls = (e) => (e ? `tc ec${e}` : "");
 function famChips(el, list, set) {
   const all = list.length === FAMS.length;
@@ -538,7 +540,7 @@ function pricesGroups() {
     const ids = [];
     for (const t of S.pTiers) {
       const es = S.pEnchs.filter((e) => !e || t >= 4);
-      if (S.pKind !== "mat") for (const e of es) ids.push(rawId(f, t, e));
+      if (S.pKind !== "mat") for (const e of es) if (!(FAM[f].stone && e > 3)) ids.push(rawId(f, t, e));
       if (S.pKind !== "raw") for (const e of es) if (!(FAM[f].stone && e > 0)) ids.push(matId(f, t, e));
     }
     groups.push({ f, ids: [...new Set(ids)] });
@@ -549,7 +551,7 @@ const pricesIds = () => pricesGroups().flatMap((g) => g.ids);
 function renderPricesControls() {
   famChips($("p-fam"), S.pFams, (v) => { S.pFams = v; save(); openPrices(); });
   chips($("p-tiers"), tierItems(ALL_TIERS), (v) => S.pTiers.includes(v), (v) => { S.pTiers = toggleIn(S.pTiers, v, ALL_TIERS); save(); openPrices(); }, tierCls);
-  chips($("p-ench"), ENCH_ITEMS, (v) => S.pEnchs.includes(v), (v) => { S.pEnchs = toggleIn(S.pEnchs, v, [0, 1, 2, 3]); save(); openPrices(); }, enchCls);
+  chips($("p-ench"), ENCH_ITEMS, (v) => S.pEnchs.includes(v), (v) => { S.pEnchs = toggleIn(S.pEnchs, v, ENCHS); save(); openPrices(); }, enchCls);
   chips($("p-mode"), [["order", "Своим ордером"], ["now", "Сразу"]], (v) => v === S.pMode, (v) => { S.pMode = v; save(); renderPricesControls(); renderPricesTable(); renderPricesWidgets(); });
   $("p-legend").innerHTML = S.pMode === "order"
     ? `<span><span class="ptag s">продают</span>самый дешёвый лот. Обведён самый дорогой: там выгоднее выставить свой лот на продажу</span>
@@ -921,7 +923,7 @@ const SORTS = [["margin", "Маржа"], ["stack", "За стак"], ["tier", "�
 function renderRefineControls() {
   famChips($("r-fam"), S.rFams, (v) => { S.rFams = v; save(); openRefine(); });
   chips($("r-tiers"), tierItems(REFINE_TIERS), (v) => S.rTiers.includes(v), (v) => { S.rTiers = toggleIn(S.rTiers, v, REFINE_TIERS); save(); openRefine(); }, tierCls);
-  chips($("r-ench"), ENCH_ITEMS, (v) => S.rEnchs.includes(v), (v) => { S.rEnchs = toggleIn(S.rEnchs, v, [0, 1, 2, 3]); save(); openRefine(); }, enchCls);
+  chips($("r-ench"), ENCH_ITEMS, (v) => S.rEnchs.includes(v), (v) => { S.rEnchs = toggleIn(S.rEnchs, v, ENCHS); save(); openRefine(); }, enchCls);
   chips($("r-sort"), SORTS, (v) => v === S.rSort, (v) => { S.rSort = v; save(); renderRefineControls(); renderRefine(); });
   const sm = $("r-sort-m");
   if (!sm.options.length) SORTS.forEach(([v, l]) => sm.add(new Option(l, v)));
@@ -987,7 +989,7 @@ function renderRefineWidgets(all) {
     margin: { rows: byMargin, val: (r) => nf0.format(r.margin * 100) + "%", sub: (r) => fmtBig(r.profit * STACK) + " за стак" },
     stack: { rows: byStack, val: (r) => fmtBig(r.profit * STACK), sub: (r) => "маржа " + nf0.format(r.margin * 100) + "%" },
     focus: { rows: all.map((r) => ({ r, f: focusInfo(r) })).filter((x) => x.f && x.f.profit > 0).sort((a, b) => b.f.perPoint - a.f.perPoint).map((x) => ({ ...x.r, fi: x.f })),
-      val: (r) => `${fmt(r.fi.perPoint)} за очко`, sub: (r) => `${fmtBig(r.fi.profit * STACK)} за стак с фокусом` },
+      val: (r) => `${fmt(r.fi.perPoint)} за очко`, sub: (r) => `${fmtBig(r.fi.profit * STACK)} за стак` },
   };
   const tp = tops[S.rTop] ? S.rTop : "margin", cur = tops[tp];
   const already = S.settings.rrr === "0.539" || S.settings.rrr === "0.435";
@@ -1009,7 +1011,7 @@ function openRow(key) {
 }
 // фокус: сколько серебра даёт 1 очко. Фокус поднимает бонус производства на 59%;
 // очки тратятся на каждый крафт, включая перекрафт возврата, поэтому на 1 шт. выхода уходит F / (шт. за крафт)
-const FOCUS = { 3: 31, 4: 54, 5: 94, 6: 164, 7: 287, 8: 503, 9: 880, 10: 1539, 11: 2694 };
+const FOCUS = { 3: 31, 4: 54, 5: 94, 6: 164, 7: 287, 8: 503, 9: 880, 10: 1539, 11: 2694, 12: 4714 };
 function focusInfo(r) {
   if (!r.ok) return null;
   const c = r.c, pb = 1 / c.k - 1, kf = 1 / (1 + pb + 0.59);
@@ -1248,7 +1250,7 @@ const lnk = (id, text) => `<button type="button" class="lnk" data-goprice="${esc
 function goPrices(id) {
   const p = parseId(id); if (!p) return;
   S.pFams = [p.f]; if (!S.pTiers.includes(p.t)) S.pTiers = toggleIn(S.pTiers, p.t, ALL_TIERS);
-  if (!S.pEnchs.includes(p.e)) S.pEnchs = toggleIn(S.pEnchs, p.e, [0, 1, 2, 3]);
+  if (!S.pEnchs.includes(p.e)) S.pEnchs = toggleIn(S.pEnchs, p.e, ENCHS);
   S.pKind = "all"; S.pItem = id; arbItem = id; save(); location.hash = "prices";
 }
 // где продать: цена и объём во всех городах, прибыль с 1 шт. при такой цене
@@ -1747,7 +1749,7 @@ function renderJForm() {
   if (!tg.cy) h += `<div class="${stone ? "row2" : "row3"}">
       <label class="field"><span class="k">Ресурс</span><select id="jf-f">${FAMS.map((f) => opt(f, FAM[f].tab, f === tg.f)).join("")}</select></label>
       <label class="field"><span class="k">Тир</span><select id="jf-t">${REFINE_TIERS.map((t) => opt(t, "T" + t, t === tg.t)).join("")}</select></label>
-      ${stone ? "" : `<label class="field"><span class="k">Зачар.</span><select id="jf-e">${[0, 1, 2, 3].map((e) => opt(e, "." + e, e === tg.e)).join("")}</select></label>`}
+      ${stone ? "" : `<label class="field"><span class="k">Зачар.</span><select id="jf-e">${ENCHS.map((e) => opt(e, "." + e, e === tg.e)).join("")}</select></label>`}
     </div><span class="k">Цикл — это ${esc(lc1(matN))}: закупка, переработка и продажа одной партии.${stone ? " Блоки бывают только без зачарования, а зачарованный камень выбирается в «Что купил»." : ""}</span>`;
   const rawK = stone && /^raw[123]$/.test(jf.what) ? +jf.what[3] : 0;
   if (jf.type === "buy") {
