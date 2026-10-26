@@ -638,5 +638,7 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid tr.det .imx .ingn b{display:block;font-weight:600;color:var(--ink);font-size:13px;white-space:normal;line-height:1.2}
 .grid tr.det .imx .ingn small{display:block;color:var(--muted);font-size:11px}
 .grid tr.det .imx .ingn .ic{flex:none}
+.grid tr.det .imx td .qa{display:block;font-size:10px;font-weight:400;color:var(--muted);line-height:1.1;margin-top:1px}
+.grid tr.det .imx td .qa.old{color:var(--warn)}
 .psp{display:inline-flex;align-items:center;gap:8px}
 .psp small{font-size:12px;min-width:44px;text-align:right}

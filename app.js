@@ -2078,7 +2078,7 @@ function potDet(r) {
       if (!q) return `<td class="na">—</td>`;
       const best = cc === x.o.city;
       const tip = `${cc}: ${q.src === "order" ? "свой ордер" : "лот"} ${fmt(q.price)}${q.age !== undefined ? `, ${fmtAge(q.age)} назад` : ""}${isFinite(q.vol) ? `, ~${nf0.format(q.vol)} в день` : ""}${q.odd ? ". Не похоже на реальную цену" : ""}`;
-      return `<td class="${best ? "best" : ""}${q.odd ? " odd" : ""}" title="${esc(tip)}">${fmt(q.price)}</td>`;
+      return `<td class="${best ? "best" : ""}${q.odd ? " odd" : ""}" title="${esc(tip)}">${fmt(q.price)}<small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></td>`;
     }).join("");
     return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small></span></span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
@@ -2086,7 +2086,7 @@ function potDet(r) {
   h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт.</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
       <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div>
-    <p class="dn">Цена — ${how0}. Подсвечен самый дешёвый город, при наведении — возраст цены и объём продаж.</p></div>`;
+    <p class="dn">Цена — ${how0}. Подсвечен самый дешёвый город, под ценой — её возраст (старше суток — жёлтым), при наведении — объём продаж.</p></div>`;
   // продажа по городам
   const sells = sellCities().map((cc) => ({ c: cc, o: sellIn(r.id, cc) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - c.buf) * (1 - c.fee) - r.cost, liq = liquidity(r.sell.vol);
