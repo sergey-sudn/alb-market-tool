@@ -22,6 +22,7 @@
       <button role="tab" id="tab-prices" aria-controls="view-prices" data-view="prices">Цены</button>
       <button role="tab" id="tab-refine" aria-controls="view-refine" data-view="refine">Переработка</button>
       <button role="tab" id="tab-calc" aria-controls="view-calc" data-view="calc">Пороги</button>
+      <button role="tab" id="tab-fish" aria-controls="view-fish" data-view="fish">Рыба</button>
       <button role="tab" id="tab-journal" aria-controls="view-journal" data-view="journal">Журнал</button>
     </nav>
     <div class="bar-end">
@@ -123,6 +124,20 @@
     </section>
 
     <!-- ЖУРНАЛ -->
+    <!-- РЫБА -->
+    <section class="view" id="view-fish" role="tabpanel" aria-labelledby="tab-fish" hidden>
+      <div class="head head-row">
+        <div>
+          <h1>Рыба: продать или разделать</h1>
+          <p class="sub">Сколько стоит рыба целиком и сколько выйдет, если разделать её у мясника. Обе цены — продажа своим лотом в лучшем городе из «продаю», налог одинаковый, поэтому сравниваем как есть.</p>
+        </div>
+        <div class="tool-btns"><button class="btn ghost" type="button" data-reload="fish">Обновить</button></div>
+      </div>
+      <div class="grid2" id="f-widgets"></div>
+      <div class="tablebox panel desk"><table class="grid fish" id="f-table"></table></div>
+      <div class="cards mob" id="f-cards"></div>
+    </section>
+
     <section class="view" id="view-journal" role="tabpanel" aria-labelledby="tab-journal" hidden>
       <div class="head head-row">
         <div>
@@ -170,6 +185,7 @@
   <a href="#prices" data-view="prices"><span class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/></svg></span>Цены</a>
   <a href="#refine" data-view="refine"><span class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M20 12a8 8 0 0 1-14 5.3M6 21v-4h4"/></svg></span>Переработка</a>
   <a href="#calc" data-view="calc"><span class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"/></svg></span>Пороги</a>
+  <a href="#fish" data-view="fish"><span class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c3-4 7-6 11-6 3 0 5 2 7 6-2 4-4 6-7 6-4 0-8-2-11-6zM3 12l-1-4M3 12l-1 4M16 11v.01"/></svg></span>Рыба</a>
   <a href="#journal" data-view="journal"><span class="ti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"/></svg></span>Журнал</a>
 </nav>
 <div class="scrim" id="scrim" hidden></div>

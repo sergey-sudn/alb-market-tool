@@ -19,7 +19,7 @@ jobs:
           pip install --quiet pillow
           mkdir -p images/items /tmp/png
           ok=0; miss=0
-          for id in $(grep -oE '"T[0-9]_[A-Z]+(_LEVEL[0-9]@[0-9])?"' names.js | tr -d '"' | sort -u); do
+          for id in $(grep -oE '"T[0-9]_[A-Z0-9_]+(@[0-9])?"' names.js | tr -d '"' | sort -u); do
             name="${id//@/_}"
             [ -s "images/items/$name.webp" ] && continue
             if curl -fsSL --retry 3 --retry-delay 2 "https://render.albiononline.com/v1/item/${id//@/%40}.png?size=128&quality=1" -o "/tmp/png/$name.png"; then

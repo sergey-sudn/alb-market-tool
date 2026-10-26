@@ -75,13 +75,13 @@ const S = {
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pMat: "resale", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
-  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null,
+  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market",
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["fishWeed", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -1876,6 +1876,7 @@ function rerenderAll() {
   if (S.view === "refine") renderRefine();
   if (S.view === "calc") { renderCalcControls(); updateCalc(); }
   if (S.view === "journal") renderJournal();
+  if (S.view === "fish") renderFish();
   renderTicker();
 }
 // «Условия»: где покупаю и где продаю — по галочке на город. Хотя бы один город в каждом списке остаётся
@@ -1918,7 +1919,7 @@ function bindSettings() {
   $("open-settings").addEventListener("click", () => { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", ""); });
   dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
-  document.querySelectorAll("[data-reload]").forEach((b) => b.addEventListener("click", () => (b.dataset.reload === "prices" ? openPrices(true) : openRefine(true))));
+  document.querySelectorAll("[data-reload]").forEach((b) => b.addEventListener("click", () => (b.dataset.reload === "prices" ? openPrices(true) : b.dataset.reload === "fish" ? openFish(true) : openRefine(true))));
   document.querySelectorAll("[data-open-sheet]").forEach((b) => b.addEventListener("click", () => openSheet(b.dataset.openSheet)));
   document.querySelectorAll("[data-close-sheet]").forEach((b) => b.addEventListener("click", closeSheet));
   $("scrim").addEventListener("click", closeSheet);
@@ -1936,7 +1937,92 @@ function bindSettings() {
 }
 
 // ---------- навигация ----------
-const VIEWS = ["prices", "refine", "calc", "journal"];
+// ---------- вкладка «Рыба» ----------
+// Выход разделанной рыбы — из игровых данных (рецепт «Разделанной рыбы» у мясника):
+// обычная рыба T1–T8 даёт 1/2/3/4/6/8/10/14 шт., редкая T3/T5/T7 — 10/20/30, акула — 200
+const CHOPS = "T1_FISHCHOPS", WEED = "T1_SEAWEED";
+const FISH_COMMON_YIELD = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 8, 7: 10, 8: 14 }, FISH_RARE_YIELD = { 3: 10, 5: 20, 7: 30 };
+const FISH_RARE = ["FRESHWATER_FOREST", "FRESHWATER_MOUNTAIN", "FRESHWATER_HIGHLANDS", "FRESHWATER_STEPPE", "FRESHWATER_SWAMP", "FRESHWATER_AVALON", "FRESHWATER_DRAGON_AREA", "SALTWATER_ALL"];
+// соус: сколько разделанной рыбы и водорослей
+const SAUCES = [["T1_FISHSAUCE_LEVEL1", 15, 1], ["T1_FISHSAUCE_LEVEL2", 45, 3], ["T1_FISHSAUCE_LEVEL3", 135, 9]];
+function fishGroups() {
+  const tiers = Object.keys(FISH_COMMON_YIELD).map(Number);
+  const rare = [];
+  for (const t of Object.keys(FISH_RARE_YIELD).map(Number)) for (const r of FISH_RARE) rare.push({ id: `T${t}_FISH_${r}_RARE`, y: FISH_RARE_YIELD[t] });
+  rare.push({ id: "T8_FISH_SALTWATER_ALL_BOSS_SHARK", y: 200 });
+  return [
+    { name: "Обычная пресноводная", rows: tiers.map((t) => ({ id: `T${t}_FISH_FRESHWATER_ALL_COMMON`, y: FISH_COMMON_YIELD[t] })) },
+    { name: "Обычная морская", rows: tiers.map((t) => ({ id: `T${t}_FISH_SALTWATER_ALL_COMMON`, y: FISH_COMMON_YIELD[t] })) },
+    { name: "Редкая", rows: rare },
+  ];
+}
+const fishIds = () => [...fishGroups().flatMap((g) => g.rows.map((r) => r.id)), CHOPS, WEED, ...SAUCES.map((x) => x[0])];
+function fishIcon(id, size = 40) {
+  const t = /^T(\d)/.exec(id)[1];
+  const local = `images/items/${id}.webp`, remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
+  return `<span class="ic t${t}" style="--s:${size}px;--tc:var(--t${t})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c3-4 7-6 11-6 3 0 5 2 7 6-2 4-4 6-7 6-4 0-8-2-11-6z"/></svg>`
+    + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`
+    + `<span class="tier">T${t}</span></span>`;
+}
+// цена продажи своим лотом в лучшем городе из «продаю» — как в «Переработке»
+const fishSell = (id) => pickSell(id);
+function fishCell(o) {
+  if (!o) return `<td><span class="empty">нет цены</span></td>`;
+  return `<td><span class="v">${fmt(o.price)}</span><div class="where">${cityHtml(o.city)}<span class="age">${srcAge(o)}</span></div>${isFinite(o.vol) ? `<small>${liqDot(o.vol)}~${nf0.format(o.vol)} в день</small>` : ""}</td>`;
+}
+function fishVerdict(sell, chopsTotal) {
+  if (!sell && !isFinite(chopsTotal)) return { html: `<span class="pill none">нет цен</span>`, txt: "нет цен" };
+  if (!sell) return { html: `<span class="pill none">нет цены рыбы</span>`, txt: "нет цены рыбы" };
+  if (!isFinite(chopsTotal)) return { html: `<span class="pill none">нет цены разделки</span>`, txt: "нет цены разделки" };
+  const d = chopsTotal - sell.price, pct = d / sell.price;
+  return d > 0
+    ? { html: `<span class="pill good">разделай ${fmtSigned(d)} (${fmtPct(pct, true)})</span>`, txt: `разделай ${fmtSigned(d)}` }
+    : { html: `<span class="pill warn">продай целиком ${fmtSigned(-d)}</span>`, txt: `продай ${fmtSigned(-d)}` };
+}
+function renderFish() {
+  const chops = fishSell(CHOPS), weed = fishSell(WEED), cp = chops ? chops.price : NaN;
+  // виджеты: цена разделанной рыбы и соусы
+  const own = S.fishWeed === "own", wp = own ? 0 : weed ? weed.price : NaN;
+  const sauceRows = SAUCES.map(([id, n, w]) => {
+    const o = fishSell(id), inp = n * cp + w * wp, d = o ? o.price - inp : NaN;
+    return `<div class="b-line"><span class="b-lbl">${fishIcon(id, 34)} ${esc(itemLabel(id))}<small class="age"> ${n} рыбы + ${w} водор.</small></span>`
+      + `<span class="b-where">${o ? cityHtml(o.city) + `<span class="age">${fmt(o.price)}</span>` : `<span class="empty">нет цены</span>`}</span>`
+      + `<b class="b-val ${isFinite(d) ? (d > 0 ? "pos" : "neg") : ""}">${isFinite(d) ? fmtSigned(d) : "—"}</b></div>`;
+  }).join("");
+  $("f-widgets").innerHTML = `<div class="panel widget"><div class="w-head"><span class="k">Разделанная рыба</span></div>
+      <div class="b-list inset"><div class="b-line"><span class="b-lbl">${fishIcon(CHOPS, 34)} ${esc(itemLabel(CHOPS))}</span><span class="b-where">${chops ? cityHtml(chops.city) + `<span class="age">${srcAge(chops)}</span>` : ""}</span><b class="b-val">${chops ? fmt(chops.price) : "нет цены"}</b></div>
+      <div class="b-line"><span class="b-lbl">${fishIcon(WEED, 34)} ${esc(itemLabel(WEED))}</span><span class="b-where">${weed ? cityHtml(weed.city) + `<span class="age">${srcAge(weed)}</span>` : ""}</span><b class="b-val">${weed ? fmt(weed.price) : "нет цены"}</b></div></div>
+      <p class="k" style="margin:0">Разделывают у мясника. Плату станции и возврат ресурсов не учитываем — для рыбы они небольшие.</p></div>
+    <div class="panel widget"><div class="w-head"><span class="k">Соус или продать разделанную рыбу</span>
+      <div class="seg" role="group" aria-label="Водоросли"><button type="button" data-weed="market" aria-pressed="${!own}" title="Водоросли по рыночной цене">водоросли по рынку</button><button type="button" data-weed="own" aria-pressed="${own}" title="Свои водоросли, не считать">свои</button></div></div>
+      <div class="b-list inset">${sauceRows}</div>
+      <p class="k" style="margin:0">Сколько серебра даёт 1 соус сверх продажи рыбы и водорослей, которые на него уходят. Без возврата ресурсов при готовке: с ним соус выгоднее.</p></div>`;
+  $("f-widgets").querySelectorAll("[data-weed]").forEach((b) => b.addEventListener("click", () => { S.fishWeed = b.dataset.weed; save(); renderFish(); }));
+  // таблица
+  let h = `<thead><tr><th scope="col">Рыба</th><th scope="col">Продать рыбу</th><th scope="col">Если разделать</th><th scope="col">Выгоднее</th></tr></thead><tbody>`, m = "";
+  for (const g of fishGroups()) {
+    h += `<tr class="group"><td colspan="4">${g.name}</td></tr>`;
+    m += `<div class="k tdiv" style="--tc:var(--muted)">${g.name}</div>`;
+    for (const r of g.rows) {
+      const sell = fishSell(r.id), tot = r.y * cp, v = fishVerdict(sell, tot);
+      const name = `<div class="item">${fishIcon(r.id)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>разделка: ${r.y} шт.</small></div></div>`;
+      h += `<tr><td>${name}</td>${fishCell(sell)}<td>${isFinite(tot) ? `<span class="v">${fmt(tot)}</span><div class="where"><span class="age">${r.y} × ${fmt(cp)}</span></div>` : `<span class="empty">нет цены</span>`}</td><td>${v.html}</td></tr>`;
+      m += `<section class="panel card"><div class="card-h">${fishIcon(r.id, 42)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>разделка: ${r.y} шт.</small></div></div>`
+        + `<div class="m-line"><span class="k">Продать</span>${sell ? `${cityHtml(sell.city)}<span class="age">${srcAge(sell)}</span><b>${fmt(sell.price)}</b>` : `<b class="empty">нет цены</b>`}</div>`
+        + `<div class="m-line"><span class="k">Разделать</span><span class="age">${r.y} × ${fmt(cp)}</span><b>${isFinite(tot) ? fmt(tot) : "—"}</b></div>`
+        + `<div class="m-line">${v.html}</div></section>`;
+    }
+  }
+  $("f-table").innerHTML = h + "</tbody>";
+  $("f-cards").innerHTML = m;
+}
+async function openFish(force = false) {
+  renderFish();
+  await ensure(fishIds(), { history: true, force });
+  if (S.view === "fish") renderFish();
+}
+
+const VIEWS = ["prices", "refine", "calc", "fish", "journal"];
 function route() {
   const h = location.hash.replace("#", "");
   S.view = VIEWS.includes(h) ? h : (VIEWS.includes(S.view) ? S.view : "refine");
@@ -1951,6 +2037,7 @@ function route() {
   if (S.view === "refine") openRefine();
   if (S.view === "calc") openCalc();
   if (S.view === "journal") openJournal();
+  if (S.view === "fish") openFish();
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.view; }));
 window.addEventListener("hashchange", route);
