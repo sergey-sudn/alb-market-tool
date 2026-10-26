@@ -2062,6 +2062,16 @@ function potRows() {
     return { id, ing: parts, sell, ok: true, cost, net, profit, margin: profit / cost, perPoint: F ? gain / (F / out) : NaN, out, F, r, rf, inputs, profitF: net - costF };
   });
 }
+// обычная цена ингредиента: сделки за неделю во всех отмеченных городах (купить можно где угодно).
+// В истории AODP — средние цены всех сделок за день, и с лотов, и в ордера, так что это ориентир, а не точная граница
+function weekRef(id) { return statsOf(activeCities().flatMap((c) => histPts(id, c, 8)).sort((a, b) => a.t - b.t)); }
+// дёшево — не дороже нижней пятой сделок (P20), дорого — дороже верхней пятой (P80)
+function priceLevel(p, ref) {
+  if (!ref) return "";
+  if (p <= ref.p20) return "cheap";
+  if (p > ref.p80) return "dear";
+  return "";
+}
 // раскрытые строки «Зелий» (живут, пока открыта страница)
 const potOpen = new Set();
 function potDet(r) {
@@ -2072,21 +2082,21 @@ function potDet(r) {
   const cities = buyCities();
   const head = `<tr><th scope="col"></th>${cities.map((cc) => `<th scope="col">${cityBadge(cc)}</th>`).join("")}<th scope="col">за крафт</th></tr>`;
   const body = r.ing.map((x) => {
-    const how = howOf(x.o);
+    const how = howOf(x.o), ref = weekRef(x.id);
     const cells = cities.map((cc) => {
       const q = quoteBuy(x.id, cc, how);
       if (!q) return `<td class="na">—</td>`;
-      const best = cc === x.o.city;
-      const tip = `${cc}: ${q.src === "order" ? "свой ордер" : "лот"} ${fmt(q.price)}${q.age !== undefined ? `, ${fmtAge(q.age)} назад` : ""}${isFinite(q.vol) ? `, ~${nf0.format(q.vol)} в день` : ""}${q.odd ? ". Не похоже на реальную цену" : ""}`;
-      return `<td class="${best ? "best" : ""}${q.odd ? " odd" : ""}" title="${esc(tip)}">${fmt(q.price)}<small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></td>`;
+      const best = cc === x.o.city, lv = q.odd ? "" : priceLevel(q.price, ref);
+      const tip = `${cc}: ${q.src === "order" ? "свой ордер" : "лот"} ${fmt(q.price)}${q.age !== undefined ? `, ${fmtAge(q.age)} назад` : ""}${isFinite(q.vol) ? `, ~${nf0.format(q.vol)} в день` : ""}${q.odd ? ". Не похоже на реальную цену" : ""}${ref ? `. Обычно за неделю: ${fmt(ref.p20)}–${fmt(ref.p80)}, медиана ${fmt(ref.med)}` : ""}`;
+      return `<td class="${best ? "best" : ""}${q.odd ? " odd" : ""}" title="${esc(tip)}"><span class="qp ${lv}">${fmt(q.price)}</span><small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></td>`;
     }).join("");
     return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small></span></span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
-  const how0 = r.ing.some((x) => x.o.src === "order") ? "свой ордер (лучший ордер +1, комиссия 2,5%), если ордеров нет — лот" : "самый дешёвый лот";
+  const how0 = r.ing.some((x) => x.o.src === "order") ? `свой ордер (лучший ордер +1), если ордеров нет — лот. «За крафт» — сколько уйдёт на ингредиент за один крафт: цена × количество, для ордера ещё +${fmtPct(orderFee() - 1)} сбора за выставление${relists() ? " с учётом перевыставлений" : ""}` : "самый дешёвый лот. «За крафт» — цена × количество на один крафт";
   h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт.</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
       <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div>
-    <p class="dn">Цена — ${how0}. Подсвечен самый дешёвый город, под ценой — её возраст (старше суток — жёлтым), при наведении — объём продаж.</p></div>`;
+    <p class="dn">Цена — ${how0}. Фон — самый дешёвый город. Цвет цены — сравнение со сделками за неделю по всем городам: <span class="pos">зелёная</span> — дешевле обычного (в нижних 20%), <span class="neg">красная</span> — дороже обычного (в верхних 20%). Рядом — возраст цены, старше суток — жёлтым. При наведении — обычный диапазон и объём продаж.</p></div>`;
   // продажа по городам
   const sells = sellCities().map((cc) => ({ c: cc, o: sellIn(r.id, cc) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - c.buf) * (1 - c.fee) - r.cost, liq = liquidity(r.sell.vol);
