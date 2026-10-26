@@ -615,3 +615,28 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid.pot .iname small{max-width:420px;white-space:normal}
 @media (max-width:760px){.pfbar{display:flex}.pfbar .switch{margin-left:0}}
 .tabbar a[hidden]{display:none}
+/* «Зелья»: детали — ингредиенты таблицей по городам */
+.det-grid.pdet{grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:1240px){.det-grid.pdet{grid-template-columns:repeat(2,minmax(0,1fr))}.det-grid.pdet .ing{grid-column:1/-1}}
+@media (max-width:760px){.det-grid.pdet{grid-template-columns:minmax(0,1fr)}}
+.imx-wrap{overflow-x:auto;margin:0 -4px}
+/* внутри большой таблицы — сбрасываем её стили ячеек */
+.imx{width:100%;border-collapse:separate;border-spacing:0 3px;font-size:13px}
+.grid tr.det .imx th,.grid tr.det .imx td{all:unset;box-sizing:border-box;display:table-cell;vertical-align:middle;font-variant-numeric:tabular-nums}
+.grid tr.det .imx thead th{padding:0 6px 4px;text-align:center}
+.grid tr.det .imx thead th:last-child{text-align:right;color:var(--muted);font-size:11px;padding-right:4px}
+.grid tr.det .imx thead .cb{min-width:24px;height:18px;font-size:10px}
+.grid tr.det .imx tbody th{width:99%;text-align:left;padding:4px 10px 4px 2px;white-space:nowrap}
+.grid tr.det .imx td{text-align:right;padding:6px 8px;min-width:54px;white-space:nowrap;color:var(--muted)}
+.grid tr.det .imx td.best{color:var(--ink);font-weight:600;background:var(--accent-soft);border-radius:8px}
+.grid tr.det .imx td.odd{text-decoration:line-through;color:var(--faint)}
+.grid tr.det .imx td.na{color:var(--faint)}
+.grid tr.det .imx td.sum{color:var(--ink);font-weight:600;padding-left:14px;padding-right:4px}
+.grid tr.det .imx tfoot th,.grid tr.det .imx tfoot td{border-top:1px solid var(--line);padding-top:8px}
+.grid tr.det .imx tfoot th{text-align:left;font-weight:600;color:var(--ink-2);padding-left:2px}
+.grid tr.det .imx .ingn{display:flex;align-items:center;gap:8px}
+.grid tr.det .imx .ingn b{display:block;font-weight:600;color:var(--ink);font-size:13px;white-space:normal;line-height:1.2}
+.grid tr.det .imx .ingn small{display:block;color:var(--muted);font-size:11px}
+.grid tr.det .imx .ingn .ic{flex:none}
+.psp{display:inline-flex;align-items:center;gap:8px}
+.psp small{font-size:12px;min-width:44px;text-align:right}
