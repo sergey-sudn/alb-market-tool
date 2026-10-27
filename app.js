@@ -76,13 +76,13 @@ const S = {
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pMat: "resale", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
-  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false,
+  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["fishWeed", "potWhere", "potFocus", "potPlus", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -116,6 +116,9 @@ S.settings.buyC = clean(S.settings.buyC, CITIES, [...DEF.buyC]);
 S.settings.tabs = { ...DEF.tabs, ...(S.settings.tabs || {}) };
 S.settings.sellC = clean(S.settings.sellC, CITIES, [...DEF.sellC]);
 S.rTiers = clean(S.rTiers, REFINE_TIERS, [5, 6, 7, 8]);
+S.potTiers = clean(S.potTiers, [2, 3, 4, 5, 6, 7, 8], [2, 3, 4, 5, 6, 7, 8]);
+if (!["margin", "profit", "vol"].includes(S.potSort)) S.potSort = "margin";
+if (S.potDir !== 1) S.potDir = -1;
 S.cTiers = clean(S.cTiers, REFINE_TIERS, [5, 6, 7, 8]);
 if (!FAM[S.cFam]) S.cFam = "stone";
 if (!S.limits || typeof S.limits !== "object" || Array.isArray(S.limits)) S.limits = {};
@@ -2040,11 +2043,15 @@ async function openFish(force = false) {
 
 // ---------- вкладка «Зелья» ----------
 // Рецепты — из игровых данных: [id, фокус за крафт, зелий за крафт, [[ингредиент, кол-во]…]]
-const POTS = [["T5_POTION_ACID",294,10,[["T5_ALCHEMY_RARE_DIREBEAR",1],["T5_TEASEL",48],["T4_BURDOCK",24],["T4_MILK",12]]],["T7_POTION_ACID",1296,10,[["T7_ALCHEMY_RARE_DIREBEAR",1],["T7_MULLEIN",144],["T6_FOXGLOVE",72],["T6_ALCOHOL",72],["T6_MILK",36],["T7_ALCOHOL",36]]],["T4_POTION_BERSERK",56,10,[["T3_ALCHEMY_RARE_WEREWOLF",1],["T4_BURDOCK",16]]],["T6_POTION_BERSERK",298,10,[["T5_ALCHEMY_RARE_WEREWOLF",1],["T6_FOXGLOVE",48],["T2_AGARIC",24],["T6_ALCOHOL",12]]],["T8_POTION_BERSERK",1307,10,[["T7_ALCHEMY_RARE_WEREWOLF",1],["T8_YARROW",144],["T3_COMFREY",72],["T6_ALCOHOL",72],["T7_ALCOHOL",36],["T8_ALCOHOL",36]]],["T8_POTION_CLEANSE",1272,5,[["T8_YARROW",72],["T7_MULLEIN",36],["T5_TEASEL",36],["T8_MILK",18],["T8_ALCOHOL",18]]],["T4_POTION_COOLDOWN",84,5,[["T4_BURDOCK",8],["T3_COMFREY",4]]],["T6_POTION_COOLDOWN",378,5,[["T6_FOXGLOVE",24],["T5_TEASEL",12],["T3_COMFREY",12],["T6_MILK",6]]],["T8_POTION_COOLDOWN",1272,5,[["T8_YARROW",72],["T7_MULLEIN",36],["T5_TEASEL",36],["T8_MILK",18],["T8_ALCOHOL",18]]],["T4_POTION_ENERGY",210,5,[["T4_BURDOCK",24],["T4_MILK",6]]],["T6_POTION_ENERGY",768,5,[["T6_FOXGLOVE",72],["T6_MILK",18],["T6_ALCOHOL",18]]],["T4_POTION_GATHER",61,10,[["T3_ALCHEMY_RARE_ELEMENTAL",1],["T4_BUTTER",16]]],["T6_POTION_GATHER",310,10,[["T5_ALCHEMY_RARE_ELEMENTAL",1],["T6_BUTTER",48],["T6_FOXGLOVE",24],["T5_TEASEL",12]]],["T8_POTION_GATHER",1319,10,[["T7_ALCHEMY_RARE_ELEMENTAL",1],["T8_BUTTER",144],["T8_YARROW",72],["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T8_ALCOHOL",36]]],["T4_POTION_HEAL",210,5,[["T4_BURDOCK",24],["T3_EGG",6]]],["T6_POTION_HEAL",768,5,[["T6_FOXGLOVE",72],["T5_EGG",18],["T6_ALCOHOL",18]]],["T4_POTION_LAVA",56,10,[["T3_ALCHEMY_RARE_IMP",1],["T4_MILK",16]]],["T6_POTION_LAVA",294,10,[["T5_ALCHEMY_RARE_IMP",1],["T6_MILK",48],["T6_FOXGLOVE",24],["T3_EGG",12]]],["T8_POTION_LAVA",1272,10,[["T7_ALCHEMY_RARE_IMP",1],["T8_MILK",144],["T8_YARROW",72],["T7_MULLEIN",72],["T5_EGG",36],["T8_ALCOHOL",36]]],["T4_POTION_LIFEWARD",56,10,[["T4_ALCHEMY_RARE_DRAGONAREA",1],["T4_BURDOCK",16]]],["T6_POTION_LIFEWARD",294,10,[["T6_ALCHEMY_RARE_DRAGONAREA",1],["T6_FOXGLOVE",48],["T5_TEASEL",24],["T2_AGARIC",12]]],["T8_POTION_LIFEWARD",1296,10,[["T8_ALCHEMY_RARE_DRAGONAREA",1],["T8_YARROW",144],["T7_MULLEIN",72],["T5_TEASEL",72],["T2_AGARIC",36],["T8_ALCOHOL",36]]],["T5_POTION_REVIVE",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T5_EGG",6]]],["T7_POTION_REVIVE",1020,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T5_EGG",18],["T7_ALCOHOL",18]]],["T5_POTION_SLOWFIELD",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T5_EGG",6]]],["T7_POTION_SLOWFIELD",1272,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T4_BURDOCK",36],["T5_EGG",18],["T7_ALCOHOL",18]]],["T5_POTION_STONESKIN",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T4_MILK",6]]],["T7_POTION_STONESKIN",1272,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T4_BURDOCK",36],["T6_MILK",18],["T7_ALCOHOL",18]]],["T4_POTION_TORNADO",56,10,[["T3_ALCHEMY_RARE_EAGLE",1],["T4_BURDOCK",16]]],["T6_POTION_TORNADO",294,10,[["T5_ALCHEMY_RARE_EAGLE",1],["T6_FOXGLOVE",48],["T5_TEASEL",24],["T3_EGG",12]]],["T8_POTION_TORNADO",1296,10,[["T7_ALCHEMY_RARE_EAGLE",1],["T8_YARROW",144],["T7_MULLEIN",72],["T7_ALCOHOL",72],["T5_EGG",36],["T8_ALCOHOL",36]]]];
+const POTS = [["T2_POTION_HEAL",56,5,[["T2_AGARIC",8]]],["T2_POTION_ENERGY",56,5,[["T2_AGARIC",8]]],["T3_POTION_REVIVE",56,5,[["T3_COMFREY",8]]],["T3_POTION_STONESKIN",56,5,[["T3_COMFREY",8]]],["T3_POTION_SLOWFIELD",56,5,[["T3_COMFREY",8]]],["T3_POTION_ACID",56,10,[["T3_ALCHEMY_RARE_DIREBEAR",1],["T3_COMFREY",16]]],["T3_POTION_MOB_RESET",56,10,[["T3_ALCHEMY_RARE_PANTHER",1],["T3_COMFREY",16]]],["T5_POTION_MOB_RESET",294,10,[["T5_ALCHEMY_RARE_PANTHER",1],["T5_TEASEL",48],["T4_BURDOCK",24],["T2_AGARIC",12]]],["T7_POTION_MOB_RESET",1272,10,[["T7_ALCHEMY_RARE_PANTHER",1],["T7_MULLEIN",144],["T6_FOXGLOVE",72],["T3_COMFREY",72],["T2_AGARIC",36],["T7_ALCOHOL",36]]],["T3_POTION_CLEANSE2",56,10,[["T3_ALCHEMY_RARE_ENT",1],["T3_COMFREY",16]]],["T5_POTION_CLEANSE2",298,10,[["T5_ALCHEMY_RARE_ENT",1],["T5_TEASEL",48],["T3_COMFREY",24],["T4_BUTTER",12]]],["T7_POTION_CLEANSE2",1283,10,[["T7_ALCHEMY_RARE_ENT",1],["T7_MULLEIN",144],["T4_BURDOCK",72],["T3_COMFREY",72],["T6_BUTTER",36],["T7_ALCOHOL",36]]],["T5_POTION_ACID",294,10,[["T5_ALCHEMY_RARE_DIREBEAR",1],["T5_TEASEL",48],["T4_BURDOCK",24],["T4_MILK",12]]],["T7_POTION_ACID",1296,10,[["T7_ALCHEMY_RARE_DIREBEAR",1],["T7_MULLEIN",144],["T6_FOXGLOVE",72],["T6_ALCOHOL",72],["T6_MILK",36],["T7_ALCOHOL",36]]],["T4_POTION_BERSERK",56,10,[["T3_ALCHEMY_RARE_WEREWOLF",1],["T4_BURDOCK",16]]],["T6_POTION_BERSERK",298,10,[["T5_ALCHEMY_RARE_WEREWOLF",1],["T6_FOXGLOVE",48],["T2_AGARIC",24],["T6_ALCOHOL",12]]],["T8_POTION_BERSERK",1307,10,[["T7_ALCHEMY_RARE_WEREWOLF",1],["T8_YARROW",144],["T3_COMFREY",72],["T6_ALCOHOL",72],["T7_ALCOHOL",36],["T8_ALCOHOL",36]]],["T8_POTION_CLEANSE",1272,5,[["T8_YARROW",72],["T7_MULLEIN",36],["T5_TEASEL",36],["T8_MILK",18],["T8_ALCOHOL",18]]],["T4_POTION_COOLDOWN",84,5,[["T4_BURDOCK",8],["T3_COMFREY",4]]],["T6_POTION_COOLDOWN",378,5,[["T6_FOXGLOVE",24],["T5_TEASEL",12],["T3_COMFREY",12],["T6_MILK",6]]],["T8_POTION_COOLDOWN",1272,5,[["T8_YARROW",72],["T7_MULLEIN",36],["T5_TEASEL",36],["T8_MILK",18],["T8_ALCOHOL",18]]],["T4_POTION_ENERGY",210,5,[["T4_BURDOCK",24],["T4_MILK",6]]],["T6_POTION_ENERGY",768,5,[["T6_FOXGLOVE",72],["T6_MILK",18],["T6_ALCOHOL",18]]],["T4_POTION_GATHER",61,10,[["T3_ALCHEMY_RARE_ELEMENTAL",1],["T4_BUTTER",16]]],["T6_POTION_GATHER",310,10,[["T5_ALCHEMY_RARE_ELEMENTAL",1],["T6_BUTTER",48],["T6_FOXGLOVE",24],["T5_TEASEL",12]]],["T8_POTION_GATHER",1319,10,[["T7_ALCHEMY_RARE_ELEMENTAL",1],["T8_BUTTER",144],["T8_YARROW",72],["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T8_ALCOHOL",36]]],["T4_POTION_HEAL",210,5,[["T4_BURDOCK",24],["T3_EGG",6]]],["T6_POTION_HEAL",768,5,[["T6_FOXGLOVE",72],["T5_EGG",18],["T6_ALCOHOL",18]]],["T4_POTION_LAVA",56,10,[["T3_ALCHEMY_RARE_IMP",1],["T4_MILK",16]]],["T6_POTION_LAVA",294,10,[["T5_ALCHEMY_RARE_IMP",1],["T6_MILK",48],["T6_FOXGLOVE",24],["T3_EGG",12]]],["T8_POTION_LAVA",1272,10,[["T7_ALCHEMY_RARE_IMP",1],["T8_MILK",144],["T8_YARROW",72],["T7_MULLEIN",72],["T5_EGG",36],["T8_ALCOHOL",36]]],["T4_POTION_LIFEWARD",56,10,[["T4_ALCHEMY_RARE_DRAGONAREA",1],["T4_BURDOCK",16]]],["T6_POTION_LIFEWARD",294,10,[["T6_ALCHEMY_RARE_DRAGONAREA",1],["T6_FOXGLOVE",48],["T5_TEASEL",24],["T2_AGARIC",12]]],["T8_POTION_LIFEWARD",1296,10,[["T8_ALCHEMY_RARE_DRAGONAREA",1],["T8_YARROW",144],["T7_MULLEIN",72],["T5_TEASEL",72],["T2_AGARIC",36],["T8_ALCOHOL",36]]],["T5_POTION_REVIVE",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T5_EGG",6]]],["T7_POTION_REVIVE",1020,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T5_EGG",18],["T7_ALCOHOL",18]]],["T5_POTION_SLOWFIELD",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T5_EGG",6]]],["T7_POTION_SLOWFIELD",1272,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T4_BURDOCK",36],["T5_EGG",18],["T7_ALCOHOL",18]]],["T5_POTION_STONESKIN",294,5,[["T5_TEASEL",24],["T4_BURDOCK",12],["T4_MILK",6]]],["T7_POTION_STONESKIN",1272,5,[["T7_MULLEIN",72],["T6_FOXGLOVE",36],["T4_BURDOCK",36],["T6_MILK",18],["T7_ALCOHOL",18]]],["T4_POTION_TORNADO",56,10,[["T3_ALCHEMY_RARE_EAGLE",1],["T4_BURDOCK",16]]],["T6_POTION_TORNADO",294,10,[["T5_ALCHEMY_RARE_EAGLE",1],["T6_FOXGLOVE",48],["T5_TEASEL",24],["T3_EGG",12]]],["T8_POTION_TORNADO",1296,10,[["T7_ALCHEMY_RARE_EAGLE",1],["T8_YARROW",144],["T7_MULLEIN",72],["T7_ALCOHOL",72],["T5_EGG",36],["T8_ALCOHOL",36]]]];
 // возврат при алхимии: Брецилиэн даёт +15% к крафту зелий (бонус производства 0,18 + 0,15), фокус — ещё +0,59
 const POT_RRR = { brec: [0.248, 0.479], city: [0.152, 0.435] };
 // редкие алхимические ингредиенты (с монстров) в возврат не считаем — не уверены, что они возвращаются
 const isRareAlch = (id) => id.includes("_ALCHEMY_RARE_");
+const potTier = (id) => +id[1];
+const POT_TIERS = [2, 3, 4, 5, 6, 7, 8];
+// сортировка таблицы зелий: по марже, прибыли с 1 шт. или объёму продаж в день
+const POT_SORT = { margin: (r) => r.margin, profit: (r) => r.profit, vol: (r) => (isFinite(r.sell.vol) ? r.sell.vol : -1) };
 const potIds = () => [...new Set(POTS.flatMap(([id, , , ing]) => [id, ...ing.map((x) => x[0])]))];
 function potRows() {
   const c = calcSettings(), [r0, rf] = POT_RRR[S.potWhere] || POT_RRR.brec, r = S.potFocus ? rf : r0;
@@ -2125,20 +2132,62 @@ function potSpark(r) {
   const ser = r.sell ? series7(r.id, r.sell.city, 15) : null;
   return ser ? `<div class="psp">${spark(ser.vals, 110, 30)}<small class="${ser.delta >= 0 ? "pos" : "neg"}">${fmtPct(ser.delta, true)}</small></div>` : `<span class="empty">мало сделок</span>`;
 }
+// лучшее зелье по марже (из тех, что продаются хотя бы 50 шт. в день) и следующие три
+function renderPotWidgets(all) {
+  const box = $("pot-widgets"); if (!box) return;
+  const plus = all.filter((r) => r.ok && r.profit > 0 && isFinite(r.sell.vol) && r.sell.vol >= MIN_VOL).sort((a, b) => b.margin - a.margin);
+  const title = `<div class="w-head"><span class="k">Лучшее прямо сейчас</span><span class="k">по марже, из тех, что продаются от ${MIN_VOL} шт. в день</span></div>`;
+  if (!plus.length) {
+    const loading = pending > 0 && !all.some((r) => r.ok);
+    box.innerHTML = `<div class="panel widget best span2">${title}<p class="w-empty">${loading ? "Загружаю цены…" : "При этих условиях ни одно зелье не выходит в плюс. Попробуй другие тиры или фокус."}</p></div>`;
+    return;
+  }
+  const b = plus[0], liq = liquidity(b.sell.vol);
+  const line = (lbl, o, val, cls = "") => `<div class="b-line"><span class="b-lbl">${lbl}</span><span class="b-where">${o ? cityHtml(o.city) + `<span class="age">${srcAge(o)}</span>` : ""}</span><b class="b-val ${cls}">${val}</b></div>`;
+  let h = `<div class="panel widget best span2" style="--tc:var(--t${potTier(b.id)})">${title}
+    <div class="b-head">${fishIcon(b.id, 64)}<div class="b-txt"><div class="b-title">${esc(itemLabel(b.id))}</div><div class="b-recipe">${b.out} шт. за крафт · ${esc(b.ing.map((x) => `${lc1(itemLabel(x.id))} ×${x.n}`).join(" · "))}</div></div><div class="b-pct">${nf0.format(b.margin * 100)}%</div></div>
+    <div class="b-list inset">
+      ${b.ing.map((x) => line(`${x.o.src === "order" ? "Ордер на" : "Купи"} ${esc(lc1(itemLabel(x.id)))} ×${x.n}`, x.o, fmt(x.o.price))).join("")}
+      ${line(`Продай ${esc(lc1(itemLabel(b.id)))}`, b.sell, fmt(b.sell.price))}
+      <div class="b-line"><span class="b-lbl">Прибыль за стак 999</span><span class="b-where"><span class="liq ${liq.cls}" title="${esc(liq.txt)}">продаётся ${nf0.format(b.sell.vol)} в день</span></span><b class="b-val pos">${fmtBig(b.profit * STACK)}</b></div>
+    </div></div>`;
+  const next = plus.slice(1, 4);
+  h += `<div class="panel widget span2 tops"><div class="w-head"><span class="k">Следом</span><span class="k">маржа · прибыль с 1 шт.</span></div>`
+    + (next.length ? `<div class="tl">${next.map((r) => `<button type="button" class="tl-row" data-key="${r.id}">${fishIcon(r.id, 38)}<span class="tl-name">${esc(itemLabel(r.id))}<small class="age" style="display:block">${cityHtml(r.sell.city)} · ~${nf0.format(r.sell.vol)} в день</small></span><span class="tl-v"><b class="pos">${nf0.format(r.margin * 100)}%</b><span class="age">${fmtSigned(r.profit)} за шт.</span></span></button>`).join("")}</div>`
+      : `<p class="w-empty">Больше зелий в плюсе нет.</p>`) + `</div>`;
+  box.innerHTML = h;
+  box.querySelectorAll(".tl-row").forEach((el) => el.addEventListener("click", () => openPotRow(el.dataset.key)));
+}
+function openPotRow(id) {
+  potOpen.add(id);
+  if (!S.potTiers.includes(potTier(id))) S.potTiers = toggleIn(S.potTiers, potTier(id), POT_TIERS);
+  renderPot();
+  const el = document.querySelector(`${isMobile() ? "#pot-cards .card" : "#pot-table tr.rrow"}[data-key="${id}"]`);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
 function renderPot() {
-  const rows = potRows().sort((a, b) => (a.ok !== b.ok ? (a.ok ? -1 : 1) : (b.margin || -9) - (a.margin || -9)));
+  const key = POT_SORT[S.potSort], dir = S.potDir;
+  const all = potRows().filter((r) => S.potTiers.includes(potTier(r.id)));
+  const rows = all.sort((a, b) => (a.ok !== b.ok ? (a.ok ? -1 : 1) : !a.ok ? 0 : dir * (key(a) - key(b)) || b.margin - a.margin));
   const shown = S.potPlus ? rows.filter((r) => r.ok && r.profit > 0) : rows, c0 = calcSettings();
+  renderPotWidgets(all);
   const seg = (key, items) => `<span class="seg">${items.map(([v, l]) => `<button type="button" data-pk="${key}" data-v="${v}" aria-pressed="${String(S[key]) === String(v)}">${l}</button>`).join("")}</span>`;
   const [r0, rf] = POT_RRR[S.potWhere] || POT_RRR.brec;
-  $("pot-ctrl").innerHTML = `<span class="fsum">Где варишь</span>${seg("potWhere", [["brec", "Брецилиэн +15%"], ["city", "другой город"]])}`
+  const allT = S.potTiers.length === POT_TIERS.length;
+  $("pot-ctrl").innerHTML = `<span class="fsum">Тир</span><span class="chips tier-chips" id="pot-tiers"></span>`
+    + `<span class="fsum">Где варишь</span>${seg("potWhere", [["brec", "Брецилиэн +15%"], ["city", "другой город"]])}`
     + `<span class="fsum">Фокус</span>${seg("potFocus", [["false", "без фокуса"], ["true", "с фокусом"]])}`
     + `<label class="switch"><input type="checkbox" id="pot-plus"${S.potPlus ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только в плюсе</span></label>`
-    + `<span class="k">возврат ${fmtPct(S.potFocus ? rf : r0)}</span>`;
-  $("pot-ctrl").querySelectorAll("[data-pk]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.pk; S[k] = k === "potFocus" ? b.dataset.v === "true" : b.dataset.v; save(); renderPot(); }));
+    + `<span class="k">возврат ${fmtPct(S.potFocus ? rf : r0)}</span>`
+    + `<span class="mob pot-sortm"><span class="fsum">Сортировка</span>${seg("potSort", [["margin", "маржа"], ["profit", "за 1 шт."], ["vol", "продажи"]])}</span>`;
+  chips($("pot-tiers"), [["all", "Все"], ...tierItems(POT_TIERS)], (v) => (v === "all" ? allT : S.potTiers.includes(v) && !allT),
+    (v) => { S.potTiers = v === "all" ? [...POT_TIERS] : allT ? [v] : toggleIn(S.potTiers, v, POT_TIERS); save(); renderPot(); }, (v) => (v === "all" ? "" : tierCls(v)));
+  $("pot-ctrl").querySelectorAll("[data-pk]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.pk; S[k] = k === "potFocus" ? b.dataset.v === "true" : b.dataset.v; if (k === "potSort") S.potDir = -1; save(); renderPot(); }));
   $("pot-plus").addEventListener("change", (e) => { S.potPlus = e.target.checked; save(); renderPot(); });
   const ingTxt = (r) => r.ing.map((x) => `${lc1(itemLabel(x.id))} ×${x.n}`).join(" · ");
   const ingTip = (r) => r.ing.map((x) => `${itemLabel(x.id)} ×${x.n}: ${x.o ? `${fmt(x.o.price)} в ${x.o.city}${x.o.src === "order" ? " (свой ордер)" : ""}` : "нет цены"}`).join("\n") + (r.ok ? `\nНа выходе ${r.out} шт. за крафт` : "");
-  let h = `<thead><tr><th scope="col">Зелье</th><th scope="col">Продажа</th><th scope="col">За 1 шт.</th><th scope="col">Маржа</th><th scope="col" class="c-spark" title="Средняя цена сделок по дням в городе продажи">14 дней</th></tr></thead><tbody>`, m = "";
+  const sh = (k, label, tip) => { const on = S.potSort === k; return `<th scope="col" aria-sort="${on ? (dir < 0 ? "descending" : "ascending") : "none"}"><button type="button" class="sorth${on ? " on" : ""}" data-sort="${k}" title="${tip}">${label}<span class="arr" aria-hidden="true">${on ? (dir < 0 ? "↓" : "↑") : "↕"}</span></button></th>`; };
+  let h = `<thead><tr><th scope="col">Зелье</th>${sh("vol", "Продажа", "Сортировать по объёму продаж в день")}${sh("profit", "За 1 шт.", "Сортировать по прибыли с 1 зелья")}${sh("margin", "Маржа", "Сортировать по марже")}<th scope="col" class="c-spark" title="Средняя цена сделок по дням в городе продажи">14 дней</th></tr></thead><tbody>`, m = "";
   if (!shown.length) { h += `<tr><td class="msg" colspan="5">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе при этих условиях."}</td></tr>`; m = `<div class="panel card"><span class="k">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе."}</span></div>`; }
   for (const r of shown) {
     const name = `<div class="item">${fishIcon(r.id)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small title="${esc(ingTip(r))}">${esc(ingTxt(r))}</small></div></div>`;
@@ -2155,6 +2204,9 @@ function renderPot() {
   const tbl = $("pot-table"), cards = $("pot-cards");
   tbl.innerHTML = h + "</tbody>";
   cards.innerHTML = m;
+  tbl.querySelectorAll("[data-sort]").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.sort; S.potDir = S.potSort === k ? -S.potDir : -1; S.potSort = k; save(); renderPot();
+  }));
   const byKey = Object.fromEntries(shown.map((r) => [r.id, r]));
   const toggle = (el) => {
     const key = el.dataset.key, r = byKey[key]; if (!r) return;

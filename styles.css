@@ -644,3 +644,13 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid tr.det .imx td .qa.old{color:var(--warn)}
 .psp{display:inline-flex;align-items:center;gap:8px}
 .psp small{font-size:12px;min-width:44px;text-align:right}
+
+/* сортировка по клику на заголовок столбца */
+.grid th button.sorth{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:inherit;font:inherit;border-radius:6px}
+.grid th button.sorth:hover{color:var(--ink-2)}
+.grid th button.sorth.on{color:var(--ink);font-weight:600}
+.grid th button.sorth:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid th button.sorth .arr{font-size:11px;opacity:.55}
+.grid th button.sorth.on .arr{opacity:1}
+.pot-sortm{display:none}
+@media (max-width:760px){.pot-sortm{display:contents}}
