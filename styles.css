@@ -737,3 +737,34 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 @media (max-width:1100px){.fav-ed{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:760px){.fav-cn{display:none}.fav-t thead th small{display:none}.fav-in{max-width:none}.fav-hint{display:none}#fav-ctrl .switch{margin-left:0}}
 @media (max-width:760px){.tabbar.many{padding-left:4px;padding-right:4px}.tabbar.many a{font-size:9.5px;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis}.tabbar.many .ti{width:40px}}
+
+/* редактор цен зелья: зелье и ингредиенты × города */
+.fav-ed.pot{grid-template-columns:minmax(0,1fr)}
+.fav-ed.pot .fav-side{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));max-width:640px}
+.fav-mxw{overflow-x:auto;margin:0 -4px;padding:0 4px}
+.fav-mx{border-collapse:collapse;font-size:12px}
+.grid tr.det .fav-mx th,.grid tr.det .fav-mx td{all:unset;display:table-cell;padding:4px 3px;vertical-align:top;font-variant-numeric:tabular-nums}
+.grid tr.det .fav-mx thead th{text-align:center;color:var(--muted);font-weight:500;font-size:11px;padding-bottom:2px}
+.grid tr.det .fav-mx thead tr:first-child th{padding-bottom:4px}
+.grid tr.det .fav-mx thead th[colspan]{border-left:1px solid var(--line)}
+.grid tr.det .fav-mx td:nth-child(2n){border-left:1px solid var(--line);padding-left:8px}
+.grid tr.det .fav-mx tbody th{padding:6px 14px 6px 0;white-space:nowrap;vertical-align:middle}
+.grid tr.det .fav-mx tbody tr+tr th,.grid tr.det .fav-mx tbody tr+tr td{border-top:1px solid var(--line)}
+.grid tr.det .fav-mx tbody tr.fav-pot th,.grid tr.det .fav-mx tbody tr.fav-pot td{padding-bottom:10px}
+.fav-iname{display:flex;align-items:center;gap:8px}
+.fav-iname b{display:block;font-size:13px;font-weight:600;color:var(--ink);white-space:normal;max-width:190px;line-height:1.2}
+.fav-iname small{display:block;font-size:11px;color:var(--muted)}
+.fav-iname .fav-star.sm{margin-left:2px}
+.fav-in.sm{height:30px;padding:0 6px;width:76px;max-width:none;border-radius:8px}
+.fav-in.sm input{font-size:13px}
+.fav-in.sm i{font-size:10px}
+.fav-in.sm+.fav-src{font-size:10px;text-align:right;padding-right:2px}
+.fav-cityb{border-top:1px solid var(--line);padding:10px 0}
+.fav-cityb:first-child{border-top:0;padding-top:2px}
+.fav-cityh{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;margin-bottom:6px}
+.fav-cityh .k{margin-left:auto;font-weight:400;font-size:11px}
+.fav-irow{display:flex;align-items:center;gap:8px;padding:4px 0}
+.fav-irow .fav-iname{flex:1;min-width:0}
+.fav-irow .fav-iname b{font-size:12px}
+.fav-pair{display:flex;gap:6px}
+.fav-pair .fav-in.sm{width:74px}

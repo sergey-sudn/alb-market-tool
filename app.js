@@ -2410,65 +2410,83 @@ function favMarginCell(r) {
   return `<td><b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b><small class="age" style="display:block">${r.note}</small></td>`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку
-function favEditor(id, pots) {
-  const cities = activeCities(), key = `${S.settings.server}|${id}`, man = S.manual[key] || {};
-  const cell = (c, side) => {
-    const sd = side === "sell" ? "s" : "b", m = man[c] && man[c][sd], a = apiOf(id, c, side);
-    const mine = m && (!a || m[1] >= a.t) && (Date.now() - m[1]) / 36e5 <= maxAge();
-    const aAge = a ? (Date.now() - a.t) / 36e5 : NaN;
-    const ph = a && aAge <= maxAge() ? fmt(a.p) : "—";
-    const src = mine ? `<small class="fav-src man">ты · ${fmtAge((Date.now() - m[1]) / 36e5)} назад</small>`
-      : a ? `<small class="fav-src">сервер · ${fmtAge(aAge)} назад${aAge > maxAge() ? " (устарела)" : ""}</small>` : `<small class="fav-src">нет цены</small>`;
-    return `<td><label class="fav-in${mine ? " on" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-c="${esc(c)}" data-s="${sd}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(c)}: ${side === "sell" ? "лот" : "ордер"}"><i aria-hidden="true">★</i></label>${src}</td>`;
-  };
+// поле ввода цены: своя цена (жёлтая рамка) или серым — цена с сервера
+function favInput(id, c, side, ord, compact = false) {
+  const sd = side === "sell" ? "s" : "b", man = S.manual[`${S.settings.server}|${id}`] || {}, m = man[c] && man[c][sd], a = apiOf(id, c, side);
+  const mine = m && (!a || m[1] >= a.t) && (Date.now() - m[1]) / 36e5 <= maxAge();
+  const aAge = a ? (Date.now() - a.t) / 36e5 : NaN;
+  const ph = a && aAge <= maxAge() ? fmt(a.p) : "—";
+  const src = mine ? `<small class="fav-src man">${compact ? "" : "ты · "}${fmtAge((Date.now() - m[1]) / 36e5)}${compact ? "" : " назад"}</small>`
+    : a ? `<small class="fav-src">${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${compact ? "&nbsp;" : "нет цены"}</small>`;
+  return `<label class="fav-in${mine ? " on" : ""}${compact ? " sm" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "лот" : "ордер"}"><i aria-hidden="true">★</i></label>${src}`;
+}
+// редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
+// У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта
+function favEditor(id, pots, mob = false) {
+  const cities = activeCities(), rec = potRecipe(id);
+  const items = rec ? [[id, 0], ...rec[3]] : [[id, 0]];
   // что изменят свои цены: считаем ещё раз без них
   manualOff = true; const base = favCalc(id, potRows()); manualOff = false;
   const now = favCalc(id, pots);
   const fmtM = (r) => isFinite(r.m) ? `${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%` : "—";
   const q = (o) => o ? `${fmt(o.price)} в ${o.city}` : "нет цены";
   const kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
-  const hasMan = !!favManInfo(id);
-  let side = `<div class="det-b"><h4>${hasMan ? "С твоими ценами" : "Сейчас"}</h4>`
+  const hasMan = items.some(([i]) => favManInfo(i));
+  const side = `<div class="det-b"><h4>${hasMan ? "С твоими ценами" : "Сейчас"}</h4>`
     + kv("Купить", now.buy ? `${fmt(now.buy.price)}${now.buy.manual ? MSTAR : ""} <span class="age">${esc(now.buy.city)}</span>` : "—")
     + kv("Продать", now.sell ? `${fmt(now.sell.price)}${now.sell.manual ? MSTAR : ""} <span class="age">${esc(now.sell.city)}</span>` : "—")
     + (now.k === "pot" && isFinite(now.p) ? kv("Прибыль за 1 шт.", fmtSigned(now.p), now.p >= 0 ? "pos" : "neg") : "")
     + (now.k !== "ing" && now.k !== "fish" ? kv(`Маржа${now.note ? ` (${now.note})` : ""}`, fmtM(now), isFinite(now.m) ? (now.m >= 0 ? "pos" : "neg") : "") : "")
-    + (hasMan ? `<p class="dn">По ценам с сервера: купить ${q(base.buy)}, продать ${q(base.sell)}${now.k !== "ing" && now.k !== "fish" ? `, маржа ${fmtM(base)}` : ""}</p>` : `<p class="dn">Впиши цены, которые видишь в игре, — здесь будет видно, что изменится</p>`)
+    + (hasMan ? `<p class="dn">По ценам с сервера: ${now.k === "pot" ? "" : `купить ${q(base.buy)}, `}продать ${q(base.sell)}${now.k === "pot" && isFinite(base.p) ? `, прибыль ${fmtSigned(base.p)}` : ""}${now.k !== "ing" && now.k !== "fish" ? `, маржа ${fmtM(base)}` : ""}</p>` : `<p class="dn">Впиши цены, которые видишь в игре, — здесь будет видно, что изменится</p>`)
     + `</div>`;
-  const rec = potRecipe(id);
-  if (rec) side += `<div class="det-b"><h4>Ингредиенты</h4>${rec[3].map(([i, n]) => { const o = pickBuy(i); return `<div class="dl fav-ing"><span>${fishIcon(i, 22)}${esc(itemLabel(i))} ×${n}</span><b>${o ? fmt(o.price) + (o.manual ? MSTAR : "") : "—"}</b>${favBtn(i, true)}</div>`; }).join("")}<p class="dn">Цены ингредиентов правятся в их строках. Звёздочка — добавить ингредиент в избранное</p></div>`;
-  const tip = `Вписывай то, что видишь на рынке в игре. Пустое поле — берём цену с сервера (серым). Твоя цена живёт столько же, сколько остальные (${maxAge()} ч, «Условия» → свежесть), и уступает место цене с сервера, если та новее.`;
-  return `<div class="fav-ed"><div class="det-b fav-grid"><h4>Цены по городам <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>
-    <table class="fav-t"><thead><tr><th scope="col"></th><th scope="col">Самый дешёвый лот<small>купить сразу · продать лотом</small></th><th scope="col">Лучший ордер на закупку<small>продать сразу · купить ордером</small></th></tr></thead>
-    <tbody>${cities.map((c) => `<tr><th scope="row">${cityBadge(c)}<span class="fav-cn">${esc(c)}</span></th>${cell(c, "sell")}${cell(c, "buy")}</tr>`).join("")}</tbody></table>
-    <div class="fav-act"><button class="btn" type="button" data-fsave="${esc(id)}">Сохранить</button><button class="btn ghost" type="button" data-freset="${esc(id)}"${hasMan || Object.keys(man).length ? "" : " disabled"}>Сбросить мои цены</button><span class="k fav-hint">Enter — сохранить и к следующему полю</span></div>
-    </div><div class="fav-side">${side}</div></div>`;
+  const tip = `Вписывай то, что видишь на рынке в игре. Пустое поле — берём цену с сервера (серым). Твоя цена живёт столько же, сколько остальные (${maxAge()} ч, «Условия» → свежесть), и уступает место цене с сервера, если та новее.${rec ? " Enter переходит по городам: сначала все поля одного города, потом следующего." : ""}`;
+  const act = `<div class="fav-act"><button class="btn" type="button" data-fsave>Сохранить</button><button class="btn ghost" type="button" data-freset${hasMan ? "" : " disabled"}>Сбросить мои цены</button><span class="k fav-hint">Enter — сохранить и к следующему полю</span></div>`;
+  const itemName = ([i, n], k) => `<span class="fav-iname">${fishIcon(i, 24)}<span><b>${esc(itemLabel(i))}</b>${k ? `<small>×${n}${isRareAlch(i) ? " · редкий" : ""}</small>` : `<small>зелье</small>`}</span>${k ? favBtn(i, true) : ""}</span>`;
+  let grid;
+  if (!rec) {
+    grid = `<table class="fav-t"><thead><tr><th scope="col"></th><th scope="col">Самый дешёвый лот<small>купить сразу · продать лотом</small></th><th scope="col">Лучший ордер на закупку<small>продать сразу · купить ордером</small></th></tr></thead>
+      <tbody>${cities.map((c, ci) => `<tr><th scope="row">${cityBadge(c)}<span class="fav-cn">${esc(c)}</span></th><td>${favInput(id, c, "sell", ci * 2)}</td><td>${favInput(id, c, "buy", ci * 2 + 1)}</td></tr>`).join("")}</tbody></table>`;
+  } else if (mob) {
+    // телефон: по блоку на город, внутри — зелье и ингредиенты
+    grid = cities.map((c, ci) => `<div class="fav-cityb"><div class="fav-cityh">${cityBadge(c)}<span>${esc(c)}</span><span class="k">лот · ордер</span></div>`
+      + items.map((it, k) => `<div class="fav-irow">${itemName(it, k)}<div class="fav-pair"><div>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</div><div>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</div></div></div>`).join("") + `</div>`).join("");
+  } else {
+    // ноутбук: строки — зелье и ингредиенты, столбцы — города (лот и ордер)
+    grid = `<div class="fav-mxw"><table class="fav-mx"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="2">${cityBadge(c)}</th>`).join("")}</tr>
+      <tr>${cities.map(() => `<th scope="col">лот</th><th scope="col">ордер</th>`).join("")}</tr></thead>
+      <tbody>${items.map((it, k) => `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => `<td>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</td><td>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  }
+  return `<div class="fav-ed${rec ? " pot" : ""}" data-items="${esc(JSON.stringify(items.map((x) => x[0])))}"><div class="det-b fav-grid"><h4>${rec ? "Цены зелья и ингредиентов" : "Цены по городам"} <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>${grid}${act}</div><div class="fav-side">${side}</div></div>`;
 }
-function favSave(id, root, focusNext = null) {
-  const key = `${S.settings.server}|${id}`, man = { ...(S.manual[key] || {}) };
-  root.querySelectorAll("input[data-c]").forEach((inp) => {
-    const c = inp.dataset.c, sd = inp.dataset.s, raw = inp.value.replace(/[^\d]/g, ""), v = raw ? +raw : 0;
-    const old = man[c] && man[c][sd];
-    const wasMine = inp.closest(".fav-in").classList.contains("on");
-    if (!v) { if (wasMine && man[c]) { man[c] = { ...man[c] }; delete man[c][sd]; } return; }
-    if (wasMine && old && old[0] === v) return; // не меняли — время ввода сохраняем
+const favInputs = (box) => [...box.querySelectorAll("input[data-c]")].sort((a, b) => a.dataset.ord - b.dataset.ord);
+function favSave(id, box, focusNext = null) {
+  const srv = S.settings.server, next = {};
+  for (const inp of box.querySelectorAll("input[data-c]")) {
+    const iid = inp.dataset.i, key = `${srv}|${iid}`;
+    if (!next[key]) next[key] = JSON.parse(JSON.stringify(S.manual[key] || {}));
+    const man = next[key], c = inp.dataset.c, sd = inp.dataset.s, raw = inp.value.replace(/[^\d]/g, ""), v = raw ? +raw : 0;
+    const old = man[c] && man[c][sd], wasMine = inp.closest(".fav-in").classList.contains("on");
+    if (!v) { if (wasMine && man[c]) delete man[c][sd]; continue; }
+    if (wasMine && old && old[0] === v) continue; // не меняли — время ввода сохраняем
     man[c] = { ...(man[c] || {}), [sd]: [v, Date.now()] };
-  });
-  for (const c of Object.keys(man)) if (!man[c].s && !man[c].b) delete man[c];
-  if (Object.keys(man).length) S.manual[key] = man; else delete S.manual[key];
+  }
+  for (const [key, man] of Object.entries(next)) {
+    for (const c of Object.keys(man)) if (!man[c].s && !man[c].b) delete man[c];
+    if (Object.keys(man).length) S.manual[key] = man; else delete S.manual[key];
+  }
   save(); renderFav();
   if (focusNext !== null) {
-    const box = document.querySelector(`${isMobile() ? "#fav-cards" : "#fav-table"} [data-fedit="${id}"]`);
-    const list = box ? [...box.querySelectorAll("input[data-c]")] : [];
-    const el = list[focusNext]; if (el) { el.focus(); el.select(); }
+    const nb = document.querySelector(`${isMobile() ? "#fav-cards" : "#fav-table"} [data-fedit="${id}"]`);
+    const el = nb ? favInputs(nb)[focusNext] : null; if (el) { el.focus(); el.select(); }
   }
 }
 function bindFavEditor(root) {
   root.querySelectorAll("[data-fedit]").forEach((box) => {
-    const id = box.dataset.fedit, inputs = [...box.querySelectorAll("input[data-c]")];
+    const id = box.dataset.fedit, inputs = favInputs(box);
     inputs.forEach((inp, i) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); favSave(id, box, i + 1 < inputs.length ? i + 1 : null); } }));
     const sv = box.querySelector("[data-fsave]"); if (sv) sv.addEventListener("click", () => favSave(id, box));
-    const rs = box.querySelector("[data-freset]"); if (rs) rs.addEventListener("click", () => { delete S.manual[`${S.settings.server}|${id}`]; save(); renderFav(); });
+    const rs = box.querySelector("[data-freset]"), ed = box.querySelector(".fav-ed");
+    if (rs && ed) rs.addEventListener("click", () => { for (const i of JSON.parse(ed.dataset.items)) delete S.manual[`${S.settings.server}|${i}`]; save(); renderFav(); });
   });
   root.querySelectorAll("[data-pot]").forEach((a) => a.addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -2517,7 +2535,7 @@ function renderFav() {
       m += `<section class="panel card${open ? " open" : ""}" tabindex="0" data-key="${esc(r.id)}" aria-expanded="${open}"><div class="card-h">${parseId(r.id) ? icon(r.id, 42) : fishIcon(r.id, 42)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>${mi ? `★ ${mi.n} ${plural(mi.n, ["цена", "цены", "цен"])} вручную · ${fmtAge(mi.age)} назад` : "цены с сервера"}</small></div>${mm}${favBtn(r.id)}</div>`
         + `<div class="m-line"><span class="k">Купить</span>${r.buy ? `${cityHtml(r.buy.city)}<span class="age">${srcAge(r.buy)}</span><b>${fmt(r.buy.price)}${r.buy.manual ? MSTAR : ""}</b>` : `<b class="empty">нет цены</b>`}</div>`
         + `<div class="m-line"><span class="k">Продать</span>${r.sell ? `${cityHtml(r.sell.city)}<span class="age">${srcAge(r.sell)}</span><b>${fmt(r.sell.price)}${r.sell.manual ? MSTAR : ""}</b>` : `<b class="empty">нет цены</b>`}</div>`
-        + `<div class="card-det"${open ? "" : " hidden"}><div data-fedit="${esc(r.id)}">${open ? favEditor(r.id, pots) : ""}</div></div></section>`;
+        + `<div class="card-det"${open ? "" : " hidden"}><div data-fedit="${esc(r.id)}">${open ? favEditor(r.id, pots, true) : ""}</div></div></section>`;
     }
   }
   tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
