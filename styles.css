@@ -616,19 +616,23 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 @media (max-width:760px){.pfbar{display:flex}.pfbar .switch{margin-left:0}}
 .tabbar a[hidden]{display:none}
 /* «Зелья»: детали — ингредиенты таблицей по городам */
-.det-grid.pdet{grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) minmax(0,1fr)}
-@media (max-width:1500px){.det-grid.pdet{grid-template-columns:repeat(2,minmax(0,1fr))}.det-grid.pdet .ing{grid-column:1/-1}}
-@media (max-width:760px){.det-grid.pdet{grid-template-columns:minmax(0,1fr)}}
+/* детали зелья: ингредиенты по ширине содержимого, справа — продажа и деньги стопкой */
+.det-grid.pdet{grid-template-columns:auto minmax(300px,1fr);align-items:start}
+.pstack{display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (max-width:1180px){.det-grid.pdet{grid-template-columns:minmax(0,1fr)}.pstack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.pstack{grid-template-columns:minmax(0,1fr)}}
+.phint{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--line-2);font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;cursor:help;vertical-align:1px}
+.phint:hover,.phint:focus-visible{color:var(--ink);border-color:var(--ink-2);outline:none}
 .imx-wrap{overflow-x:auto;margin:0 -4px}
 /* внутри большой таблицы — сбрасываем её стили ячеек */
-.imx{width:100%;border-collapse:separate;border-spacing:0 3px;font-size:13px}
+.imx{width:auto;border-collapse:separate;border-spacing:0 3px;font-size:13px}
 .grid tr.det .imx th,.grid tr.det .imx td{all:unset;box-sizing:border-box;display:table-cell;vertical-align:middle;font-variant-numeric:tabular-nums}
 .grid tr.det .imx thead th{padding:0 6px 4px;text-align:center}
 .grid tr.det .imx thead th:last-child{text-align:right;color:var(--muted);font-size:11px;padding-right:4px}
 .grid tr.det .imx thead .cb{min-width:24px;height:18px;font-size:10px}
-.grid tr.det .imx tbody th{width:99%;text-align:left;padding:4px 10px 4px 2px;white-space:nowrap}
+.grid tr.det .imx tbody th{padding-right:24px;text-align:left;padding:4px 10px 4px 2px;white-space:nowrap}
 .grid tr.det .imx td{text-align:right;padding:6px 7px;white-space:nowrap;color:var(--muted)}
-.grid tr.det .imx td.best{color:var(--ink);font-weight:600;background:var(--accent-soft);border-radius:8px}
+.grid tr.det .imx td.best{font-weight:600;box-shadow:inset 0 0 0 1.5px var(--good);border-radius:8px}
 .grid tr.det .imx td.odd{text-decoration:line-through;color:var(--faint)}
 .grid tr.det .imx td.na{color:var(--faint)}
 .grid tr.det .imx td.sum{color:var(--ink);font-weight:600;padding-left:14px;padding-right:4px}
@@ -654,3 +658,30 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid th button.sorth.on .arr{opacity:1}
 .pot-sortm{display:none}
 @media (max-width:760px){.pot-sortm{display:contents}}
+
+/* виджеты «Зелий» */
+.pbest,.ptops{align-self:start}
+.ptiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ptile{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:14px;background:var(--inset);min-width:0}
+.ptile b{font-size:20px;font-variant-numeric:tabular-nums;white-space:nowrap} .ptile b.pos{color:var(--good)}
+.ptile small{font-size:12px;color:var(--muted)} .ptile small .liq{margin-right:6px}
+.pfold{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--inset);font-weight:600;font-size:14px}
+.pfold:hover{background:var(--hover)} .pfold:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pfold .k{margin-left:auto;font-weight:400}
+.pfold .chev{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;transition:transform .15s;flex:none}
+.pfold.on .chev{transform:rotate(90deg)}
+.pmini{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.pmini th,.pmini td{padding:8px 6px;text-align:right;white-space:nowrap;border-top:1px solid var(--line);vertical-align:middle}
+.pmini thead th{border-top:0;font-size:12px;font-weight:500;color:var(--muted);padding-top:2px}
+.pmini th:first-child{text-align:left;padding-left:0} .pmini td:last-child{padding-right:0}
+.pmini tbody th{font-weight:600}
+.pmini tbody tr{cursor:pointer} .pmini tbody tr:hover th{color:var(--ink-2)}
+.pmini tbody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pmini td small{display:block;font-size:12px}
+.pmini .liq{margin-right:6px}
+.pm-nm{display:flex;align-items:center;gap:10px;white-space:normal;line-height:1.2}
+.pm-nm .ic{flex:none}
+.pcity{display:inline-flex;gap:6px;align-items:baseline}
+.grid.pot .liq{margin-right:6px}
+@media (max-width:760px){.ptiles{grid-template-columns:repeat(2,minmax(0,1fr))}.pmini th:nth-child(5),.pmini td:nth-child(5){display:none}}
+@media (max-width:1240px){.grid.pot .c-stack{display:none}}

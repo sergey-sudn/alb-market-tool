@@ -76,13 +76,13 @@ const S = {
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pMat: "resale", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
-  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1,
+  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1, potTop: "margin",
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -2085,6 +2085,7 @@ function potDet(r) {
   const c = calcSettings(), kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
   if (!r.ok) return `<div class="det-grid"><div class="det-b"><h4>Не хватает цен</h4><p class="dn">Нет свежих цен: ${esc([...r.ing.filter((x) => !x.o).map((x) => itemLabel(x.id)), r.sell ? "" : "продажа зелья"].filter(Boolean).join(", "))}. Попробуй обновить цены или проверь города в «Условиях».</p></div></div>`;
   let h = `<div class="det-grid pdet">`;
+  const hint = (t) => `<span class="phint" tabindex="0" title="${esc(t)}">?</span>`;
   // ингредиенты: строки — ингредиенты, столбцы — города «покупаю»; самый дешёвый город подсвечен
   const cities = buyCities();
   const head = `<tr><th scope="col"></th>${cities.map((cc) => `<th scope="col">${cityBadge(cc)}</th>`).join("")}<th scope="col">за крафт</th></tr>`;
@@ -2100,23 +2101,19 @@ function potDet(r) {
     return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small></span></span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
   const how0 = r.ing.some((x) => x.o.src === "order") ? `свой ордер (лучший ордер +1), если ордеров нет — лот. «За крафт» — сколько уйдёт на ингредиент за один крафт: цена × количество, для ордера ещё +${fmtPct(orderFee() - 1)} сбора за выставление${relists() ? " с учётом перевыставлений" : ""}` : "самый дешёвый лот. «За крафт» — цена × количество на один крафт";
-  h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт.</h4>
+  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — самый дешёвый город. Цвет цены — сравнение со сделками за неделю по всем городам: зелёная — дешевле обычного (в нижних 20%), красная — дороже обычного (в верхних 20%). Рядом — возраст цены, старше суток — жёлтым. При наведении на цену — обычный диапазон и объём продаж.`;
+  h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт. ${hint(legend)}</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
-      <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div>
-    <p class="dn">Цена — ${how0}. Фон — самый дешёвый город. Цвет цены — сравнение со сделками за неделю по всем городам: <span class="pos">зелёная</span> — дешевле обычного (в нижних 20%), <span class="neg">красная</span> — дороже обычного (в верхних 20%). Рядом — возраст цены, старше суток — жёлтым. При наведении — обычный диапазон и объём продаж.</p></div>`;
+      <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div></div><div class="pstack">`;
   // продажа по городам
   const sells = sellCities().map((cc) => ({ c: cc, o: sellIn(r.id, cc) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - c.buf) * (1 - c.fee) - r.cost, liq = liquidity(r.sell.vol);
   const totVol = sells.reduce((a, x) => a + (isFinite(x.o.vol) ? x.o.vol : 0), 0);
-  h += `<div class="det-b"><h4>Продажа</h4>${sells.map(({ c: cc, o }) => `<div class="dl ws${cc === r.sell.city ? " on" : ""}">${cityBadge(cc)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
-    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. Всего по городам ~${nf0.format(totVol)} в день. Цена за вычетом уценки ${fmtPct(c.buf)} и налога ${fmtPct(c.fee)}</p>
+  h += `<div class="det-b"><h4>Продажа ${hint(`Город · продаётся в день · цена · прибыль с 1 шт. Всего по городам ~${nf0.format(totVol)} в день. Цена за вычетом уценки ${fmtPct(c.buf)} и налога ${fmtPct(c.fee)}.`)}</h4>${sells.map(({ c: cc, o }) => `<div class="dl ws${cc === r.sell.city ? " on" : ""}">${cityBadge(cc)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
     <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
   // деньги
   const cls = r.profit >= 0 ? "pos" : "neg", rare = r.ing.some((x) => isRareAlch(x.id));
   h += `<div class="det-b"><h4>Деньги</h4>`
-    + kv("Прибыль за 1 шт.", fmtSigned(r.profit), cls)
-    + kv("Прибыль за стак 999", fmtBig(r.profit * STACK), cls)
-    + kv("Маржа", nf0.format(r.margin * 100) + "%", cls)
     + kv("Себестоимость 1 шт.", fmt(r.cost))
     + `<p class="dn">(ингредиенты ${fmt(r.inputs)} за крафт${r.ing.some((x) => x.o.fee > 1) ? ", с комиссией ордера" : ""}) × (1 − возврат ${fmtPct(r.r)})${rare ? ", редкий ингредиент без возврата" : ""} / ${r.out} шт.</p>`
     + kv("Вложить на стак", fmtBig(r.cost * STACK, false))
@@ -2124,7 +2121,7 @@ function potDet(r) {
     + (S.potFocus ? "" : kv(`С фокусом (возврат ${fmtPct(r.rf)})`, fmtBig(r.profitF * STACK) + " за стак", r.profitF >= 0 ? "pos" : "neg"))
     + (r.F ? `<p class="dn">Фокуса на стак ~${nf0.format(r.F / r.out * STACK)} без специализации</p>` : "")
     + `</div>`;
-  return h + `</div>`;
+  return h + `</div></div>`;
 }
 const bindPotDet = (root) => bindDet(root);
 // график цены сделок за 14 дней в городе продажи
@@ -2132,31 +2129,46 @@ function potSpark(r) {
   const ser = r.sell ? series7(r.id, r.sell.city, 15) : null;
   return ser ? `<div class="psp">${spark(ser.vals, 110, 30)}<small class="${ser.delta >= 0 ? "pos" : "neg"}">${fmtPct(ser.delta, true)}</small></div>` : `<span class="empty">мало сделок</span>`;
 }
-// лучшее зелье по марже (из тех, что продаются хотя бы 50 шт. в день) и следующие три
+// виджеты над таблицей: лучшее зелье по марже (из тех, что продаются хотя бы 50 шт. в день) и следующие 5
+const potFold = { open: false };
 function renderPotWidgets(all) {
   const box = $("pot-widgets"); if (!box) return;
-  const plus = all.filter((r) => r.ok && r.profit > 0 && isFinite(r.sell.vol) && r.sell.vol >= MIN_VOL).sort((a, b) => b.margin - a.margin);
+  const liquid = all.filter((r) => r.ok && r.profit > 0 && isFinite(r.sell.vol) && r.sell.vol >= MIN_VOL);
+  const plus = [...liquid].sort((a, b) => b.margin - a.margin);
   const title = `<div class="w-head"><span class="k">Лучшее прямо сейчас</span><span class="k">по марже, из тех, что продаются от ${MIN_VOL} шт. в день</span></div>`;
   if (!plus.length) {
     const loading = pending > 0 && !all.some((r) => r.ok);
     box.innerHTML = `<div class="panel widget best span2">${title}<p class="w-empty">${loading ? "Загружаю цены…" : "При этих условиях ни одно зелье не выходит в плюс. Попробуй другие тиры или фокус."}</p></div>`;
     return;
   }
-  const b = plus[0], liq = liquidity(b.sell.vol);
-  const line = (lbl, o, val, cls = "") => `<div class="b-line"><span class="b-lbl">${lbl}</span><span class="b-where">${o ? cityHtml(o.city) + `<span class="age">${srcAge(o)}</span>` : ""}</span><b class="b-val ${cls}">${val}</b></div>`;
-  let h = `<div class="panel widget best span2" style="--tc:var(--t${potTier(b.id)})">${title}
-    <div class="b-head">${fishIcon(b.id, 64)}<div class="b-txt"><div class="b-title">${esc(itemLabel(b.id))}</div><div class="b-recipe">${b.out} шт. за крафт · ${esc(b.ing.map((x) => `${lc1(itemLabel(x.id))} ×${x.n}`).join(" · "))}</div></div><div class="b-pct">${nf0.format(b.margin * 100)}%</div></div>
-    <div class="b-list inset">
-      ${b.ing.map((x) => line(`${x.o.src === "order" ? "Ордер на" : "Купи"} ${esc(lc1(itemLabel(x.id)))} ×${x.n}`, x.o, fmt(x.o.price))).join("")}
-      ${line(`Продай ${esc(lc1(itemLabel(b.id)))}`, b.sell, fmt(b.sell.price))}
-      <div class="b-line"><span class="b-lbl">Прибыль за стак 999</span><span class="b-where"><span class="liq ${liq.cls}" title="${esc(liq.txt)}">продаётся ${nf0.format(b.sell.vol)} в день</span></span><b class="b-val pos">${fmtBig(b.profit * STACK)}</b></div>
-    </div></div>`;
-  const next = plus.slice(1, 4);
-  h += `<div class="panel widget span2 tops"><div class="w-head"><span class="k">Следом</span><span class="k">маржа · прибыль с 1 шт.</span></div>`
-    + (next.length ? `<div class="tl">${next.map((r) => `<button type="button" class="tl-row" data-key="${r.id}">${fishIcon(r.id, 38)}<span class="tl-name">${esc(itemLabel(r.id))}<small class="age" style="display:block">${cityHtml(r.sell.city)} · ~${nf0.format(r.sell.vol)} в день</small></span><span class="tl-v"><b class="pos">${nf0.format(r.margin * 100)}%</b><span class="age">${fmtSigned(r.profit)} за шт.</span></span></button>`).join("")}</div>`
-      : `<p class="w-empty">Больше зелий в плюсе нет.</p>`) + `</div>`;
+  const b = plus[0];
+  const line = (lbl, o, val) => `<div class="b-line"><span class="b-lbl">${lbl}</span><span class="b-where">${o ? cityHtml(o.city) + `<span class="age">${srcAge(o)}</span>` : ""}</span><b class="b-val">${val}</b></div>`;
+  const tile = (k, v, sub, cls = "") => `<div class="ptile"><span class="k">${k}</span><b class="${cls}">${v}</b><small>${sub}</small></div>`;
+  let h = `<div class="panel widget best span2 pbest" style="--tc:var(--t${potTier(b.id)})">${title}
+    <div class="b-head">${fishIcon(b.id, 64)}<div class="b-txt"><div class="b-title">${esc(itemLabel(b.id))}</div><div class="b-recipe">T${potTier(b.id)} · ${b.out} шт. за крафт</div></div><div class="b-pct">${nf0.format(b.margin * 100)}%</div></div>
+    <div class="ptiles">${tile("Себестоимость", fmt(b.cost), "за 1 шт.")}${tile("Продажа", fmt(b.sell.price), cityHtml(b.sell.city))}${tile("Прибыль за стак", fmtBig(b.profit * STACK), `${fmtSigned(b.profit)} за шт.`, "pos")}${tile("Продаётся", nf0.format(b.sell.vol), `${liqDot(b.sell.vol)}в день`)}</div>
+    <button type="button" class="pfold${potFold.open ? " on" : ""}" aria-expanded="${potFold.open}">${CHEV}<span>Где брать ингредиенты</span><span class="k">${b.ing.length} шт. · ${fmt(b.inputs)} за крафт</span></button>
+    ${potFold.open ? `<div class="b-list inset">${b.ing.map((x) => line(`${x.o.src === "order" ? "Ордер на" : "Купи"} ${esc(lc1(itemLabel(x.id)))} ×${x.n}`, x.o, fmt(x.o.price))).join("")}</div>` : ""}</div>`;
+  // справа — следующие 5: по марже (без лучшего), за стак или на фокус
+  const tops = {
+    margin: { rows: plus.slice(1), col: "Маржа", v: (r) => `<b style="color:${levelColor(r.margin, r.profit, calcSettings().m)}">${nf0.format(r.margin * 100)}%</b>` },
+    stack: { rows: [...liquid].sort((x, y) => y.profit - x.profit), col: "За стак", v: (r) => `<b class="pos">${fmtBig(r.profit * STACK)}</b>` },
+    focus: { rows: liquid.filter((r) => isFinite(r.perPoint) && r.profitF > 0).sort((x, y) => y.perPoint - x.perPoint), col: "За очко", v: (r) => `<b>${fmt(r.perPoint)}</b>` },
+  };
+  const tp = tops[S.potTop] ? S.potTop : "margin", cur = tops[tp], rows = cur.rows.slice(0, 5);
+  h += `<div class="panel widget span2 tops ptops"><div class="w-head"><div class="seg" role="group" aria-label="Список">${[["margin", "По марже"], ["stack", "За стак"], ["focus", "На фокус"]].map(([v, l]) => `<button type="button" data-ptop="${v}" aria-pressed="${v === tp}">${l}</button>`).join("")}</div>`
+    + `<span class="k">${tp === "margin" ? "следом за лучшим" : tp === "focus" ? "серебра на 1 очко фокуса" : "прибыль за стак 999"}</span></div>`
+    + (rows.length ? `<table class="pmini"><thead><tr><th scope="col">Зелье</th><th scope="col">Продажа</th><th scope="col">За 1 шт.</th><th scope="col">${cur.col}</th><th scope="col">В день</th></tr></thead><tbody>`
+      + rows.map((r) => `<tr data-key="${r.id}" tabindex="0"><th scope="row"><span class="pm-nm">${fishIcon(r.id, 30)}<span>${esc(itemLabel(r.id))}</span></span></th><td><b>${fmt(r.sell.price)}</b><small>${cityHtml(r.sell.city)}</small></td><td><b class="pos">${fmtSigned(r.profit)}</b></td><td>${cur.v(r)}</td><td>${liqDot(r.sell.vol)}${nf0.format(r.sell.vol)}</td></tr>`).join("")
+      + `</tbody></table>` : `<p class="w-empty">${tp === "margin" ? "Других зелий в плюсе нет." : "Пока нечего показать."}</p>`)
+    + `</div>`;
   box.innerHTML = h;
-  box.querySelectorAll(".tl-row").forEach((el) => el.addEventListener("click", () => openPotRow(el.dataset.key)));
+  box.querySelector(".pfold").addEventListener("click", () => { potFold.open = !potFold.open; renderPotWidgets(all); });
+  box.querySelectorAll("[data-ptop]").forEach((el) => el.addEventListener("click", () => { S.potTop = el.dataset.ptop; save(); renderPotWidgets(all); }));
+  box.querySelectorAll(".pmini tr[data-key]").forEach((el) => {
+    el.addEventListener("click", () => openPotRow(el.dataset.key));
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPotRow(el.dataset.key); } });
+  });
 }
 function openPotRow(id) {
   potOpen.add(id);
@@ -2184,20 +2196,19 @@ function renderPot() {
     (v) => { S.potTiers = v === "all" ? [...POT_TIERS] : allT ? [v] : toggleIn(S.potTiers, v, POT_TIERS); save(); renderPot(); }, (v) => (v === "all" ? "" : tierCls(v)));
   $("pot-ctrl").querySelectorAll("[data-pk]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.pk; S[k] = k === "potFocus" ? b.dataset.v === "true" : b.dataset.v; if (k === "potSort") S.potDir = -1; save(); renderPot(); }));
   $("pot-plus").addEventListener("change", (e) => { S.potPlus = e.target.checked; save(); renderPot(); });
-  const ingTxt = (r) => r.ing.map((x) => `${lc1(itemLabel(x.id))} ×${x.n}`).join(" · ");
   const ingTip = (r) => r.ing.map((x) => `${itemLabel(x.id)} ×${x.n}: ${x.o ? `${fmt(x.o.price)} в ${x.o.city}${x.o.src === "order" ? " (свой ордер)" : ""}` : "нет цены"}`).join("\n") + (r.ok ? `\nНа выходе ${r.out} шт. за крафт` : "");
   const sh = (k, label, tip) => { const on = S.potSort === k; return `<th scope="col" aria-sort="${on ? (dir < 0 ? "descending" : "ascending") : "none"}"><button type="button" class="sorth${on ? " on" : ""}" data-sort="${k}" title="${tip}">${label}<span class="arr" aria-hidden="true">${on ? (dir < 0 ? "↓" : "↑") : "↕"}</span></button></th>`; };
-  let h = `<thead><tr><th scope="col">Зелье</th>${sh("vol", "Продажа", "Сортировать по объёму продаж в день")}${sh("profit", "За 1 шт.", "Сортировать по прибыли с 1 зелья")}${sh("margin", "Маржа", "Сортировать по марже")}<th scope="col" class="c-spark" title="Средняя цена сделок по дням в городе продажи">14 дней</th></tr></thead><tbody>`, m = "";
-  if (!shown.length) { h += `<tr><td class="msg" colspan="5">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе при этих условиях."}</td></tr>`; m = `<div class="panel card"><span class="k">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе."}</span></div>`; }
+  let h = `<thead><tr><th scope="col">Зелье</th><th scope="col">Продажа</th><th scope="col">Город</th>${sh("vol", "В день", "Сортировать по объёму продаж в день")}${sh("profit", "За 1 шт.", "Сортировать по прибыли с 1 зелья")}${sh("margin", "Маржа", "Сортировать по марже")}<th scope="col" class="c-stack">За стак</th><th scope="col" class="c-spark" title="Средняя цена сделок по дням в городе продажи">14 дней</th></tr></thead><tbody>`, m = "";
+  if (!shown.length) { h += `<tr><td class="msg" colspan="8">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе при этих условиях."}</td></tr>`; m = `<div class="panel card"><span class="k">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе."}</span></div>`; }
   for (const r of shown) {
-    const name = `<div class="item">${fishIcon(r.id)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small title="${esc(ingTip(r))}">${esc(ingTxt(r))}</small></div></div>`;
+    const name = `<div class="item">${fishIcon(r.id, 36)}<div class="iname"><b>${esc(itemLabel(r.id))}</b></div></div>`;
     const cls = r.ok && r.profit >= 0 ? "pos" : "neg";
     const open = potOpen.has(r.id);
-    h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${r.id}" aria-expanded="${open}"><td>${name.replace('<div class="item">', `<div class="item">${CHEV}`)}</td>`
-      + (r.ok ? `${fishCell(r.sell)}<td><b class="${cls}">${fmtSigned(r.profit)}</b></td><td><b style="color:${levelColor(r.margin, r.profit, c0.m)}">${nf0.format(r.margin * 100)}%</b></td><td class="c-spark">${potSpark(r)}</td>`
-        : `<td colspan="4"><span class="empty">нет цен: ${esc([...r.ing.filter((x) => !x.o).map((x) => itemLabel(x.id)), r.sell ? "" : "продажа"].filter(Boolean).join(", "))}</span></td>`) + `</tr>`
-      + `<tr class="det"${open ? "" : " hidden"}><td colspan="5">${open ? potDet(r) : ""}</td></tr>`;
-    m += `<section class="panel card${open ? " open" : ""}" tabindex="0" data-key="${r.id}" aria-expanded="${open}"><div class="card-h">${fishIcon(r.id, 42)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>${esc(ingTxt(r))}</small></div>${r.ok ? `<b style="color:${levelColor(r.margin, r.profit, c0.m)};font-size:18px">${nf0.format(r.margin * 100)}%</b>` : ""}</div>`
+    h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${r.id}" aria-expanded="${open}"><td title="${esc(ingTip(r))}">${name.replace('<div class="item">', `<div class="item">${CHEV}`)}</td>`
+      + (r.ok ? `<td><b>${fmt(r.sell.price)}</b></td><td><span class="pcity">${cityHtml(r.sell.city)}<span class="age">${srcAge(r.sell)}</span></span></td><td>${isFinite(r.sell.vol) ? `${liqDot(r.sell.vol)}${nf0.format(r.sell.vol)}` : `<span class="empty">—</span>`}</td><td><b class="${cls}">${fmtSigned(r.profit)}</b></td><td><b style="color:${levelColor(r.margin, r.profit, c0.m)}">${nf0.format(r.margin * 100)}%</b></td><td class="c-stack"><b class="${cls}">${fmtBig(r.profit * STACK)}</b></td><td class="c-spark">${potSpark(r)}</td>`
+        : `<td colspan="7"><span class="empty">нет цен: ${esc([...r.ing.filter((x) => !x.o).map((x) => itemLabel(x.id)), r.sell ? "" : "продажа"].filter(Boolean).join(", "))}</span></td>`) + `</tr>`
+      + `<tr class="det"${open ? "" : " hidden"}><td colspan="8">${open ? potDet(r) : ""}</td></tr>`;
+    m += `<section class="panel card${open ? " open" : ""}" tabindex="0" data-key="${r.id}" aria-expanded="${open}"><div class="card-h">${fishIcon(r.id, 42)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>T${potTier(r.id)} · ${r.out} шт. за крафт</small></div>${r.ok ? `<b style="color:${levelColor(r.margin, r.profit, c0.m)};font-size:18px">${nf0.format(r.margin * 100)}%</b>` : ""}</div>`
       + (r.ok ? `<div class="m-line"><span class="k">Продажа</span>${cityHtml(r.sell.city)}<span class="age">${srcAge(r.sell)}</span><b>${fmt(r.sell.price)}</b></div><div class="m-line"><span class="k">За 1 шт.</span><b class="${cls}">${fmtSigned(r.profit)}</b></div><div class="m-line"><span class="k">14 дней</span>${potSpark(r)}</div>`
         : `<div class="m-line"><span class="k">не хватает цен</span></div>`) + `<div class="card-det"${open ? "" : " hidden"}>${open ? potDet(r) : ""}</div></section>`;
   }
