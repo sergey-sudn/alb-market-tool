@@ -688,3 +688,52 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid.pot .liq{margin-right:6px}
 @media (max-width:760px){.ptiles{grid-template-columns:repeat(2,minmax(0,1fr))}.pmini th:nth-child(5),.pmini td:nth-child(5){display:none}}
 @media (max-width:1240px){.grid.pot .c-stack{display:none}}
+
+/* ---------- избранное и ручные цены ---------- */
+.mstar{font-style:normal;color:var(--star);font-size:.72em;margin-left:2px;vertical-align:.35em;font-weight:600}
+.fav-star{all:unset;box-sizing:border-box;cursor:pointer;display:inline-grid;place-items:center;flex:none;width:30px;height:30px;border-radius:9px;color:var(--faint);margin-left:auto}
+.fav-star svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+.fav-star:hover{background:var(--hover);color:var(--ink)}
+.fav-star:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fav-star.on{color:var(--star)} .fav-star.on svg{fill:var(--star)}
+.fav-star.sm{width:24px;height:24px;margin-left:6px} .fav-star.sm svg{width:14px;height:14px}
+.card-h .fav-star{margin-left:0}
+.card-h .iname{flex:1}
+.ingn .fav-star.sm{margin-left:4px;align-self:center}
+:root{--star:#e8b52e}
+.fav-pop{position:fixed;z-index:95;width:320px;max-width:calc(100vw - 16px);padding:14px 16px;border-radius:16px;background:var(--panel-solid);border:1px solid var(--line-2);box-shadow:var(--pop-shadow);display:flex;flex-direction:column;gap:10px}
+.fav-pop-h{display:flex;align-items:center;gap:8px;color:var(--star)} .fav-pop-h svg{width:18px;height:18px;fill:var(--star)} .fav-pop-h b{color:var(--ink);font-size:14px}
+.fav-ck{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink-2);cursor:pointer;line-height:1.35}
+.fav-ck input{accent-color:var(--accent);margin-top:2px;flex:none}
+.fav-pop-a{display:flex;gap:8px;flex-wrap:wrap} .fav-pop-a .btn{padding:7px 12px;font-size:13px}
+#fav-ctrl{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+#fav-ctrl .switch{margin-left:auto}
+.fav-inc{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grid.fav td .where{display:flex;gap:6px;align-items:baseline;justify-content:flex-end;font-size:13px}
+.fav-used{text-align:left!important;white-space:normal!important;max-width:360px}
+.fav-used .k{display:block;font-size:11px;margin-bottom:4px}
+.fav-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 4px;margin:0 6px 4px 0;border-radius:999px;border:1px solid var(--line-2);font-size:12px;color:var(--ink-2);text-decoration:none;white-space:nowrap}
+.fav-chip:hover{border-color:var(--muted);color:var(--ink)} .fav-chip b{font-size:12px}
+.fav-mc{color:var(--star);font-weight:600;font-size:13px;white-space:nowrap}
+.fav-ed{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:12px;align-items:start}
+.fav-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.fav-side .dl span{display:inline-flex;align-items:center;gap:8px}
+.fav-ing{align-items:center!important} .fav-ing b{margin-left:auto}
+.fav-t{width:100%;border-collapse:collapse;font-size:13px}
+.grid tr.det .fav-t th,.grid tr.det .fav-t td,.card-det .fav-t th,.card-det .fav-t td{all:unset;display:table-cell;padding:6px 8px;vertical-align:top;border-top:1px solid var(--line)}
+.grid tr.det .fav-t thead th,.card-det .fav-t thead th{border-top:0;font-size:12px;color:var(--muted);font-weight:500;text-align:left}
+.fav-t thead th small{display:block;font-size:10.5px;opacity:.8}
+.grid tr.det .fav-t tbody th,.card-det .fav-t tbody th{white-space:nowrap;padding-top:12px;padding-left:0}
+.fav-t .cb{margin-right:8px}
+.fav-in{display:flex;align-items:center;gap:4px;border:1px solid var(--line-2);border-radius:10px;background:var(--panel);padding:0 10px;height:36px;max-width:170px;cursor:text}
+.fav-in:focus-within{border-color:var(--accent)}
+.fav-in input{all:unset;width:100%;min-width:0;font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;color:var(--ink)}
+.fav-in input::placeholder{color:var(--faint);font-weight:500}
+.fav-in i{font-style:normal;color:var(--star);font-size:12px;display:none}
+.fav-in.on{border-color:color-mix(in srgb,var(--star) 60%,transparent);background:color-mix(in srgb,var(--star) 8%,var(--panel))} .fav-in.on i{display:inline}
+.fav-src{display:block;font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap} .fav-src.man{color:var(--star)}
+.fav-act{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}
+.fav-act .k{font-size:12px}
+@media (max-width:1100px){.fav-ed{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:760px){.fav-cn{display:none}.fav-t thead th small{display:none}.fav-in{max-width:none}.fav-hint{display:none}#fav-ctrl .switch{margin-left:0}}
+@media (max-width:760px){.tabbar.many{padding-left:4px;padding-right:4px}.tabbar.many a{font-size:9.5px;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis}.tabbar.many .ti{width:40px}}
