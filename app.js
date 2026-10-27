@@ -2418,7 +2418,7 @@ function favInput(id, c, side, ord, compact = false) {
   const ph = a && aAge <= maxAge() ? fmt(a.p) : "—";
   const src = mine ? `<small class="fav-src man">${compact ? "" : "ты · "}${fmtAge((Date.now() - m[1]) / 36e5)}${compact ? "" : " назад"}</small>`
     : a ? `<small class="fav-src">${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${compact ? "&nbsp;" : "нет цены"}</small>`;
-  return `<label class="fav-in${mine ? " on" : ""}${compact ? " sm" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "лот" : "ордер"}"><i aria-hidden="true">★</i></label>${src}`;
+  return `<label class="fav-in${mine ? " on" : ""}${compact ? " sm" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
 // У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта
@@ -2439,21 +2439,21 @@ function favEditor(id, pots, mob = false) {
     + (now.k !== "ing" && now.k !== "fish" ? kv(`Маржа${now.note ? ` (${now.note})` : ""}`, fmtM(now), isFinite(now.m) ? (now.m >= 0 ? "pos" : "neg") : "") : "")
     + (hasMan ? `<p class="dn">По ценам с сервера: ${now.k === "pot" ? "" : `купить ${q(base.buy)}, `}продать ${q(base.sell)}${now.k === "pot" && isFinite(base.p) ? `, прибыль ${fmtSigned(base.p)}` : ""}${now.k !== "ing" && now.k !== "fish" ? `, маржа ${fmtM(base)}` : ""}</p>` : `<p class="dn">Впиши цены, которые видишь в игре, — здесь будет видно, что изменится</p>`)
     + `</div>`;
-  const tip = `Вписывай то, что видишь на рынке в игре. Пустое поле — берём цену с сервера (серым). Твоя цена живёт столько же, сколько остальные (${maxAge()} ч, «Условия» → свежесть), и уступает место цене с сервера, если та новее.${rec ? " Enter переходит по городам: сначала все поля одного города, потом следующего." : ""}`;
+  const tip = `«Продают» — самая низкая цена во вкладке «Заказы на продажу» (за столько можно купить сразу). «Покупают» — самая высокая цена во вкладке «Заказы на покупку» (за столько можно продать сразу). Вписывай то, что видишь на рынке в игре. Пустое поле — берём цену с сервера (серым). Твоя цена живёт столько же, сколько остальные (${maxAge()} ч, «Условия» → свежесть), и уступает место цене с сервера, если та новее.${rec ? " Enter переходит по городам: сначала все поля одного города, потом следующего." : ""}`;
   const act = `<div class="fav-act"><button class="btn" type="button" data-fsave>Сохранить</button><button class="btn ghost" type="button" data-freset${hasMan ? "" : " disabled"}>Сбросить мои цены</button><span class="k fav-hint">Enter — сохранить и к следующему полю</span></div>`;
   const itemName = ([i, n], k) => `<span class="fav-iname">${fishIcon(i, 24)}<span><b>${esc(itemLabel(i))}</b>${k ? `<small>×${n}${isRareAlch(i) ? " · редкий" : ""}</small>` : `<small>зелье</small>`}</span>${k ? favBtn(i, true) : ""}</span>`;
   let grid;
   if (!rec) {
-    grid = `<table class="fav-t"><thead><tr><th scope="col"></th><th scope="col">Самый дешёвый лот<small>купить сразу · продать лотом</small></th><th scope="col">Лучший ордер на закупку<small>продать сразу · купить ордером</small></th></tr></thead>
+    grid = `<table class="fav-t"><thead><tr><th scope="col"></th><th scope="col"><span class="ptag s">продают</span><small>самая низкая цена в заказах на продажу</small></th><th scope="col"><span class="ptag b">покупают</span><small>самая высокая цена в заказах на покупку</small></th></tr></thead>
       <tbody>${cities.map((c, ci) => `<tr><th scope="row">${cityBadge(c)}<span class="fav-cn">${esc(c)}</span></th><td>${favInput(id, c, "sell", ci * 2)}</td><td>${favInput(id, c, "buy", ci * 2 + 1)}</td></tr>`).join("")}</tbody></table>`;
   } else if (mob) {
     // телефон: по блоку на город, внутри — зелье и ингредиенты
-    grid = cities.map((c, ci) => `<div class="fav-cityb"><div class="fav-cityh">${cityBadge(c)}<span>${esc(c)}</span><span class="k">лот · ордер</span></div>`
+    grid = cities.map((c, ci) => `<div class="fav-cityb"><div class="fav-cityh">${cityBadge(c)}<span>${esc(c)}</span><span class="fav-tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></span></div>`
       + items.map((it, k) => `<div class="fav-irow">${itemName(it, k)}<div class="fav-pair"><div>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</div><div>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</div></div></div>`).join("") + `</div>`).join("");
   } else {
     // ноутбук: строки — зелье и ингредиенты, столбцы — города (лот и ордер)
     grid = `<div class="fav-mxw"><table class="fav-mx"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="2">${cityBadge(c)}</th>`).join("")}</tr>
-      <tr>${cities.map(() => `<th scope="col">лот</th><th scope="col">ордер</th>`).join("")}</tr></thead>
+      <tr>${cities.map(() => `<th scope="col"><span class="ptag s">продают</span></th><th scope="col"><span class="ptag b">покупают</span></th>`).join("")}</tr></thead>
       <tbody>${items.map((it, k) => `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => `<td>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</td><td>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
   }
   return `<div class="fav-ed${rec ? " pot" : ""}" data-items="${esc(JSON.stringify(items.map((x) => x[0])))}"><div class="det-b fav-grid"><h4>${rec ? "Цены зелья и ингредиентов" : "Цены по городам"} <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>${grid}${act}</div><div class="fav-side">${side}</div></div>`;
