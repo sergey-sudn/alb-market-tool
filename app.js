@@ -2129,7 +2129,7 @@ function potSpark(r) {
   const ser = r.sell ? series7(r.id, r.sell.city, 15) : null;
   return ser ? `<div class="psp">${spark(ser.vals, 110, 30)}<small class="${ser.delta >= 0 ? "pos" : "neg"}">${fmtPct(ser.delta, true)}</small></div>` : `<span class="empty">мало сделок</span>`;
 }
-// виджеты над таблицей: лучшее зелье по марже (из тех, что продаются хотя бы 50 шт. в день) и следующие 5
+// виджеты над таблицей: лучшее зелье по марже (из тех, что продаются хотя бы 50 шт. в день) и следующие 4
 const potFold = { open: false };
 function renderPotWidgets(all) {
   const box = $("pot-widgets"); if (!box) return;
@@ -2155,7 +2155,7 @@ function renderPotWidgets(all) {
     stack: { rows: [...liquid].sort((x, y) => y.profit - x.profit), col: "За стак", v: (r) => `<b class="pos">${fmtBig(r.profit * STACK)}</b>` },
     focus: { rows: liquid.filter((r) => isFinite(r.perPoint) && r.profitF > 0).sort((x, y) => y.perPoint - x.perPoint), col: "За очко", v: (r) => `<b>${fmt(r.perPoint)}</b>` },
   };
-  const tp = tops[S.potTop] ? S.potTop : "margin", cur = tops[tp], rows = cur.rows.slice(0, 5);
+  const tp = tops[S.potTop] ? S.potTop : "margin", cur = tops[tp], rows = cur.rows.slice(0, 4);
   h += `<div class="panel widget span2 tops ptops"><div class="w-head"><div class="seg" role="group" aria-label="Список">${[["margin", "По марже"], ["stack", "За стак"], ["focus", "На фокус"]].map(([v, l]) => `<button type="button" data-ptop="${v}" aria-pressed="${v === tp}">${l}</button>`).join("")}</div>`
     + `<span class="k">${tp === "margin" ? "следом за лучшим" : tp === "focus" ? "серебра на 1 очко фокуса" : "прибыль за стак 999"}</span></div>`
     + (rows.length ? `<table class="pmini"><thead><tr><th scope="col">Зелье</th><th scope="col">Продажа</th><th scope="col">За 1 шт.</th><th scope="col">${cur.col}</th><th scope="col">В день</th></tr></thead><tbody>`

@@ -663,7 +663,7 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 @media (max-width:760px){.pot-sortm{display:contents}}
 
 /* виджеты «Зелий» */
-.pbest,.ptops{align-self:start}
+.ptops .pmini{margin-top:auto;margin-bottom:auto}
 .ptiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .ptile{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:14px;background:var(--inset);min-width:0}
 .ptile b{font-size:20px;font-variant-numeric:tabular-nums;white-space:nowrap} .ptile b.pos{color:var(--good)}
