@@ -774,3 +774,25 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .fav-in.fresh{border-color:color-mix(in srgb,var(--good) 45%,var(--line-2))}
 .fav-in.fresh input::placeholder{color:var(--ink);font-weight:600}
 .fav-src.fresh{color:var(--good)}
+
+/* «Избранное» на ноутбуке: поля цен прямо в строке */
+.grid.fav th,.grid.fav td{padding-left:3px;padding-right:3px}
+.grid.fav th:first-child,.grid.fav td:first-child{padding-left:16px}
+.grid.fav th:last-child,.grid.fav td:last-child{padding-right:16px}
+.grid.fav thead th{text-align:center;padding-top:10px;padding-bottom:6px}
+.grid.fav thead th:first-child,.grid.fav thead th:last-child{text-align:left}
+.grid.fav thead tr.fav-sub th{padding-top:0;border-top:0}
+.grid.fav thead .ptag{font-size:10px;padding:3px 5px}
+.grid.fav .fav-ch,.grid.fav td.fav-c{border-left:1px solid var(--line)}
+.grid.fav td.fav-c{padding-left:8px}
+.grid.fav tr.fav-row td{vertical-align:top;padding-top:10px;padding-bottom:8px}
+.grid.fav tr.fav-row td:first-child,.grid.fav tr.fav-row td:last-child{vertical-align:middle}
+.grid.fav tr.fav-row{cursor:pointer}
+.grid.fav .fav-in.sm{width:72px}
+.grid.fav .iname b{white-space:normal;max-width:170px;display:block;line-height:1.2}
+.fav-tg{all:unset;cursor:pointer;display:inline-grid;place-items:center;border-radius:8px}
+.fav-tg:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.grid.fav tr.rrow.open .fav-tg .chev{transform:rotate(90deg)}
+.fav-det{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;align-items:start;max-width:1000px}
+.fav-det .fav-act{grid-column:1/-1;margin-top:0}
+.fav-usedl{display:flex;flex-wrap:wrap}

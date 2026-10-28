@@ -2428,20 +2428,7 @@ function favInput(id, c, side, ord, compact = false) {
 function favEditor(id, pots, mob = false) {
   const cities = activeCities(), rec = potRecipe(id);
   const items = rec ? [[id, 0], ...rec[3]] : [[id, 0]];
-  // что изменят свои цены: считаем ещё раз без них
-  manualOff = true; const base = favCalc(id, potRows()); manualOff = false;
-  const now = favCalc(id, pots);
-  const fmtM = (r) => isFinite(r.m) ? `${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%` : "—";
-  const q = (o) => o ? `${fmt(o.price)} в ${o.city}` : "нет цены";
-  const kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
-  const hasMan = items.some(([i]) => favManInfo(i));
-  const side = `<div class="det-b"><h4>${hasMan ? "С твоими ценами" : "Сейчас"}</h4>`
-    + kv("Купить", now.buy ? `${fmt(now.buy.price)}${now.buy.manual ? MSTAR : ""} <span class="age">${esc(now.buy.city)}</span>` : "—")
-    + kv("Продать", now.sell ? `${fmt(now.sell.price)}${now.sell.manual ? MSTAR : ""} <span class="age">${esc(now.sell.city)}</span>` : "—")
-    + (now.k === "pot" && isFinite(now.p) ? kv("Прибыль за 1 шт.", fmtSigned(now.p), now.p >= 0 ? "pos" : "neg") : "")
-    + (now.k !== "ing" && now.k !== "fish" ? kv(`Маржа${now.note ? ` (${now.note})` : ""}`, fmtM(now), isFinite(now.m) ? (now.m >= 0 ? "pos" : "neg") : "") : "")
-    + (hasMan ? `<p class="dn">По ценам с сервера: ${now.k === "pot" ? "" : `купить ${q(base.buy)}, `}продать ${q(base.sell)}${now.k === "pot" && isFinite(base.p) ? `, прибыль ${fmtSigned(base.p)}` : ""}${now.k !== "ing" && now.k !== "fish" ? `, маржа ${fmtM(base)}` : ""}</p>` : `<p class="dn">Впиши цены, которые видишь в игре, — здесь будет видно, что изменится</p>`)
-    + `</div>`;
+  const { side, hasMan } = favSide(id, pots, items);
   const tip = `«Продают» — самая низкая цена во вкладке «Заказы на продажу» (за столько можно купить сразу). «Покупают» — самая высокая цена во вкладке «Заказы на покупку» (за столько можно продать сразу). Вписывай то, что видишь на рынке в игре. Пустое поле — берём цену с сервера (серым). Твоя цена живёт столько же, сколько остальные (${maxAge()} ч, «Условия» → свежесть), и уступает место цене с сервера, если та новее.${rec ? " Enter переходит по городам: сначала все поля одного города, потом следующего." : ""}`;
   const act = `<div class="fav-act"><button class="btn" type="button" data-fsave>Сохранить</button><button class="btn ghost" type="button" data-freset${hasMan ? "" : " disabled"}>Сбросить мои цены</button><span class="k fav-hint">Enter — сохранить и к следующему полю</span></div>`;
   const itemName = ([i, n], k) => `<span class="fav-iname">${fishIcon(i, 24)}<span><b>${esc(itemLabel(i))}</b>${k ? `<small>×${n}${isRareAlch(i) ? " · редкий" : ""}</small>` : `<small>зелье</small>`}</span>${k ? favBtn(i, true) : ""}</span>`;
@@ -2460,6 +2447,23 @@ function favEditor(id, pots, mob = false) {
       <tbody>${items.map((it, k) => `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => `<td>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</td><td>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
   }
   return `<div class="fav-ed${rec ? " pot" : ""}" data-items="${esc(JSON.stringify(items.map((x) => x[0])))}"><div class="det-b fav-grid"><h4>${rec ? "Цены зелья и ингредиентов" : "Цены по городам"} <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>${grid}${act}</div><div class="fav-side">${side}</div></div>`;
+}
+// блок «Сейчас / С твоими ценами»: что изменят свои цены — считаем ещё раз без них
+function favSide(id, pots, items = [[id, 0]]) {
+  manualOff = true; const base = favCalc(id, potRows()); manualOff = false;
+  const now = favCalc(id, pots);
+  const fmtM = (r) => isFinite(r.m) ? `${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%` : "—";
+  const q = (o) => o ? `${fmt(o.price)} в ${o.city}` : "нет цены";
+  const kv = (k, v, cls = "") => `<div class="dl"><span>${k}</span><b class="${cls}">${v}</b></div>`;
+  const hasMan = items.some(([i]) => favManInfo(i));
+  const side = `<div class="det-b"><h4>${hasMan ? "С твоими ценами" : "Сейчас"}</h4>`
+    + kv("Купить", now.buy ? `${fmt(now.buy.price)}${now.buy.manual ? MSTAR : ""} <span class="age">${esc(now.buy.city)}</span>` : "—")
+    + kv("Продать", now.sell ? `${fmt(now.sell.price)}${now.sell.manual ? MSTAR : ""} <span class="age">${esc(now.sell.city)}</span>` : "—")
+    + (now.k === "pot" && isFinite(now.p) ? kv("Прибыль за 1 шт.", fmtSigned(now.p), now.p >= 0 ? "pos" : "neg") : "")
+    + (now.k !== "ing" && now.k !== "fish" ? kv(`Маржа${now.note ? ` (${now.note})` : ""}`, fmtM(now), isFinite(now.m) ? (now.m >= 0 ? "pos" : "neg") : "") : "")
+    + (hasMan ? `<p class="dn">По ценам с сервера: ${now.k === "pot" ? "" : `купить ${q(base.buy)}, `}продать ${q(base.sell)}${now.k === "pot" && isFinite(base.p) ? `, прибыль ${fmtSigned(base.p)}` : ""}${now.k !== "ing" && now.k !== "fish" ? `, маржа ${fmtM(base)}` : ""}</p>` : `<p class="dn">Впиши цены, которые видишь в игре, — здесь будет видно, что изменится</p>`)
+    + `</div>`;
+  return { side, hasMan };
 }
 const favInputs = (box) => [...box.querySelectorAll("input[data-c]")].sort((a, b) => a.dataset.ord - b.dataset.ord);
 function favSave(id, box, focusNext = null) {
@@ -2510,30 +2514,34 @@ function renderFav() {
   $("fav-man").addEventListener("change", (e) => { S.favMan = e.target.checked; save(); renderFav(); });
   $("fav-ctrl").querySelectorAll("[data-finc]").forEach((b) => b.addEventListener("click", () => { S.favInc = b.dataset.finc; save(); renderFav(); }));
 
-  const tbl = $("fav-table"), cards = $("fav-cards");
-  const head = `<thead><tr><th scope="col">Ресурс</th><th scope="col">Купить дешевле всего</th><th scope="col">Продать дороже всего</th><th scope="col">Маржа</th><th scope="col">Ручные цены</th></tr></thead>`;
+  const tbl = $("fav-table"), cards = $("fav-cards"), cities = activeCities(), NC = cities.length * 2 + 2;
+  // в строке — сразу поля цен по городам: проходишь список и вписываешь; маржа и «используется в» — в деталях
+  const head = `<thead><tr><th scope="col" rowspan="2">Ресурс</th>${cities.map((c) => `<th scope="colgroup" colspan="2" class="fav-ch">${cityBadge(c)}</th>`).join("")}<th scope="col" rowspan="2">Маржа</th></tr>`
+    + `<tr class="fav-sub">${cities.map(() => `<th scope="col" class="fav-ch"><span class="ptag s">продают</span></th><th scope="col"><span class="ptag b">покупают</span></th>`).join("")}</tr></thead>`;
   if (!S.fav.length) {
     const msg = `Пока пусто. Нажми звёздочку у ресурса на страницах «Цены», «Переработка», «Зелья» или «Рыба» — он появится здесь.`;
-    tbl.innerHTML = head + `<tbody><tr><td class="msg" colspan="5">${msg}</td></tr></tbody>`; cards.innerHTML = `<div class="panel card"><span class="k">${msg}</span></div>`;
+    tbl.innerHTML = head + `<tbody><tr><td class="msg" colspan="${NC}">${msg}</td></tr></tbody>`; cards.innerHTML = `<div class="panel card"><span class="k">${msg}</span></div>`;
     return;
   }
   const pots = potRows();
   const rows = S.fav.filter((id) => (S.favKind === "all" || favKind(id) === S.favKind) && S.favTiers.includes(favTier(id)) && (!S.favMan || favManInfo(id)))
     .map((id) => favCalc(id, pots));
-  let h = head + "<tbody>", m = "";
-  if (!rows.length) { h += `<tr><td class="msg" colspan="5">Под фильтр ничего не попало.</td></tr>`; m = `<div class="panel card"><span class="k">Под фильтр ничего не попало.</span></div>`; }
+  let h = head + "<tbody>", m = "", rowN = 0;
+  if (!rows.length) { h += `<tr><td class="msg" colspan="${NC}">Под фильтр ничего не попало.</td></tr>`; m = `<div class="panel card"><span class="k">Под фильтр ничего не попало.</span></div>`; }
   for (const [k, label] of FAV_KINDS) {
     const g = rows.filter((r) => r.k === k).sort((a, b) => favTier(a.id) - favTier(b.id) || itemLabel(a.id).localeCompare(itemLabel(b.id), "ru"));
     if (!g.length) continue;
-    h += `<tr class="group"><td colspan="5">${label}<span>${g.length}</span></td></tr>`;
+    h += `<tr class="group"><td colspan="${NC}">${label}<span>${g.length}</span></td></tr>`;
     m += `<div class="k tdiv" style="--tc:var(--muted)">${label}</div>`;
     for (const r of g) {
       const open = favOpen.has(r.id), mi = favManInfo(r.id);
       const ic = parseId(r.id) ? icon(r.id, 36) : fishIcon(r.id, 36);
-      const manCell = mi ? `<span class="fav-mc">★ ${mi.n} ${plural(mi.n, ["цена", "цены", "цен"])}</span><small class="age" style="display:block">вручную, ${fmtAge(mi.age)} назад</small>` : `<span class="empty">только сервер</span>`;
-      h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item">${CHEV}${ic}<div class="iname"><b>${esc(itemLabel(r.id))}</b></div>${favBtn(r.id)}</div></td>`
-        + favQuote(r.buy, r.buy && r.buy.src === "order" ? "" : "лот") + favQuote(r.sell, "лот") + favMarginCell(r) + `<td>${manCell}</td></tr>`
-        + `<tr class="det"${open ? "" : " hidden"}><td colspan="5"><div data-fedit="${esc(r.id)}">${open ? favEditor(r.id, pots) : ""}</div></td></tr>`;
+      const mg = r.k === "ing" ? `<span class="empty" title="Своей маржи нет — смотри зелья в деталях">—</span>` : isFinite(r.m) ? `<b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b>` : `<span class="empty">—</span>`;
+      h += `<tr class="rrow fav-row${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item"><button type="button" class="fav-tg" aria-label="Подробнее" aria-expanded="${open}">${CHEV}</button>${ic}<div class="iname"><b>${esc(itemLabel(r.id))}</b></div>${favBtn(r.id)}</div></td>`
+        + cities.map((c, ci) => `<td class="fav-c">${favInput(r.id, c, "sell", rowN * 100 + ci * 2, true)}</td><td class="fav-c2">${favInput(r.id, c, "buy", rowN * 100 + ci * 2 + 1, true)}</td>`).join("")
+        + `<td>${mg}</td></tr>`
+        + `<tr class="det"${open ? "" : " hidden"}><td colspan="${NC}"><div data-fdet="${esc(r.id)}">${open ? favDetail(r, pots) : ""}</div></td></tr>`;
+      rowN++;
       const mm = r.k === "ing" ? "" : isFinite(r.m) ? `<b style="color:${levelColor(r.m, r.p, calcSettings().m)};font-size:18px">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b>` : "";
       m += `<section class="panel card${open ? " open" : ""}" tabindex="0" data-key="${esc(r.id)}" aria-expanded="${open}"><div class="card-h">${parseId(r.id) ? icon(r.id, 42) : fishIcon(r.id, 42)}<div class="iname"><b>${esc(itemLabel(r.id))}</b><small>${mi ? `★ ${mi.n} ${plural(mi.n, ["цена", "цены", "цен"])} вручную · ${fmtAge(mi.age)} назад` : "цены с сервера"}</small></div>${mm}${favBtn(r.id)}</div>`
         + `<div class="m-line"><span class="k">Купить</span>${r.buy ? `${cityHtml(r.buy.city)}<span class="age">${srcAge(r.buy)}</span><b>${fmt(r.buy.price)}${r.buy.manual ? MSTAR : ""}</b>` : `<b class="empty">нет цены</b>`}</div>`
@@ -2547,12 +2555,44 @@ function renderFav() {
     if (open) favOpen.add(key); else favOpen.delete(key);
     renderFav();
   };
-  rowNav(tbl, "tbody tr.rrow", toggle);
+  // строка раскрывается по стрелке, имени или пустому месту — не по полям ввода
+  tbl.querySelectorAll("tbody tr.rrow").forEach((tr) => tr.addEventListener("click", (e) => { if (!e.target.closest(".fav-in")) toggle(tr); }));
+  // поле в строке: Enter — сохранить и к следующему полю (дальше по строке, потом следующая строка);
+  // ушёл из поля, поменяв цену, — тоже сохраняем
+  const rowInputs = () => [...$("fav-table").querySelectorAll("tbody tr.rrow input[data-ord]")].sort((a, b) => a.dataset.ord - b.dataset.ord);
+  let saving = false;
+  const saveRow = (inp, focusOrd) => {
+    if (saving) return; saving = true;
+    const tr = inp.closest("tr"); favSave(tr.dataset.key, tr);
+    saving = false;
+    if (focusOrd !== null) { const el = rowInputs().find((x) => +x.dataset.ord === focusOrd); if (el) { el.focus(); el.select(); } }
+  };
+  tbl.querySelectorAll("tbody tr.rrow input[data-ord]").forEach((inp) => {
+    inp.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault(); e.stopPropagation();
+      const nx = rowInputs().find((x) => +x.dataset.ord > +inp.dataset.ord);
+      saveRow(inp, nx ? +nx.dataset.ord : +inp.dataset.ord);
+    });
+    inp.addEventListener("change", () => {
+      setTimeout(() => { const a = document.activeElement; saveRow(inp, a && a.dataset && a.dataset.ord !== undefined ? +a.dataset.ord : null); }, 0);
+    });
+  });
   cards.querySelectorAll(".card[data-key]").forEach((el) => {
     el.addEventListener("click", (e) => { if (!e.target.closest(".card-det")) toggle(el); });
     el.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); toggle(el); } });
   });
-  bindFavEditor(tbl); bindFavEditor(cards);
+  bindFavEditor(tbl); bindFavEditor(cards); bindFavDet(tbl);
+}
+// детали строки на ноутбуке: у зелья — цены ингредиентов и итог, у остального — «используется в» и итог
+function favDetail(r, pots) {
+  if (potRecipe(r.id)) return `<div data-fedit="${esc(r.id)}">${favEditor(r.id, pots)}</div>`;
+  const { side, hasMan } = favSide(r.id, pots);
+  const used = r.k === "ing" ? `<div class="det-b"><h4>Используется в</h4>${r.used.length ? `<div class="fav-usedl">${r.used.map((u) => `<a class="fav-chip" href="#pot" data-pot="${u.id}">${fishIcon(u.id, 20)}<span>${esc(itemLabel(u.id))}</span>${u.ok ? `<b style="color:${levelColor(u.margin, u.profit, calcSettings().m)}">${nf0.format(u.margin * 100)}%</b>` : ""}</a>`).join("")}</div>` : `<p class="dn">Ни в одном зелье из каталога</p>`}<p class="dn">Маржа зелья — с учётом всех твоих цен. Клик — открыть зелье</p></div>` : "";
+  return `<div class="fav-det">${used}${side}<div class="fav-act"><button class="btn ghost" type="button" data-freset1="${esc(r.id)}"${hasMan ? "" : " disabled"}>Сбросить мои цены</button></div></div>`;
+}
+function bindFavDet(root) {
+  root.querySelectorAll("[data-freset1]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); delete S.manual[`${S.settings.server}|${b.dataset.freset1}`]; save(); renderFav(); }));
 }
 async function openFav(force = false) {
   renderFav();
