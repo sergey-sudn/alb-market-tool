@@ -2530,7 +2530,7 @@ function renderFav() {
 
   const tbl = $("fav-table"), cards = $("fav-cards"), cities = activeCities(), NC = cities.length * 2 + 2;
   // в строке — сразу поля цен по городам: проходишь список и вписываешь; маржа и «используется в» — в деталях
-  const head = `<thead><tr><th scope="col" rowspan="2">Ресурс</th>${cities.map((c) => `<th scope="colgroup" colspan="2" class="fav-ch">${cityBadge(c)}</th>`).join("")}<th scope="col" rowspan="2">Маржа</th></tr>`
+  const head = `<thead><tr><th scope="col" rowspan="2">Ресурс</th>${cities.map((c) => `<th scope="colgroup" colspan="2" class="fav-ch fav-cityname">${cityHtml(c)}</th>`).join("")}<th scope="col" rowspan="2">Маржа</th></tr>`
     + `<tr class="fav-sub">${cities.map(() => `<th scope="col" class="fav-ch"><span class="ptag s">продают</span></th><th scope="col"><span class="ptag b">покупают</span></th>`).join("")}</tr></thead>`;
   if (!S.fav.length) {
     const msg = `Пока пусто. Нажми звёздочку у ресурса на страницах «Цены», «Переработка», «Зелья» или «Рыба» — он появится здесь.`;
@@ -2551,8 +2551,8 @@ function renderFav() {
       const open = favOpen.has(r.id), mi = favManInfo(r.id);
       const ic = parseId(r.id) ? icon(r.id, 36) : fishIcon(r.id, 36);
       const mg = r.k === "ing" ? `<span class="empty" title="Своей маржи нет — смотри зелья в деталях">—</span>` : isFinite(r.m) ? `<b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b>` : `<span class="empty">—</span>`;
-      h += `<tr class="rrow fav-row${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item"><button type="button" class="fav-tg" aria-label="Подробнее" aria-expanded="${open}">${CHEV}</button>${ic}<div class="iname"><b>${esc(itemLabel(r.id))}</b></div>${favBtn(r.id)}</div></td>`
-        + ((bst) => cities.map((c, ci) => `<td class="fav-c" style="--cc:${CITY_COLOR[c]}">${favInput(r.id, c, "sell", rowN * 100 + ci * 2, true, bst.s === c)}</td><td class="fav-c2">${favInput(r.id, c, "buy", rowN * 100 + ci * 2 + 1, true, bst.b === c)}</td>`).join(""))(favBest(r.id, cities))
+      h += `<tr class="rrow fav-row${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item"><button type="button" class="fav-tg" aria-label="Подробнее" aria-expanded="${open}">${CHEV}</button>${ic}<div class="iname"><button type="button" class="fav-copy" data-copy="${esc(itemLabel(r.id))}" title="Скопировать название — чтобы вставить в поиск на рынке">${esc(itemLabel(r.id))}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button></div>${favBtn(r.id)}</div></td>`
+        + ((bst) => cities.map((c, ci) => `<td class="fav-c" style="--cc:${CITY_COLOR[c]}">${favInput(r.id, c, "sell", ci * 100000 + rowN * 2, true, bst.s === c)}</td><td class="fav-c2">${favInput(r.id, c, "buy", ci * 100000 + rowN * 2 + 1, true, bst.b === c)}</td>`).join(""))(favBest(r.id, cities))
         + `<td>${mg}</td></tr>`
         + `<tr class="det"${open ? "" : " hidden"}><td colspan="${NC}"><div data-fdet="${esc(r.id)}">${open ? favDetail(r, pots) : ""}</div></td></tr>`;
       rowN++;
@@ -2571,7 +2571,15 @@ function renderFav() {
     renderFav();
   };
   // строка раскрывается по стрелке, имени или пустому месту — не по полям ввода
-  tbl.querySelectorAll("tbody tr.rrow").forEach((tr) => tr.addEventListener("click", (e) => { if (!e.target.closest(".fav-in")) toggle(tr); }));
+  tbl.querySelectorAll("tbody tr.rrow").forEach((tr) => tr.addEventListener("click", (e) => { if (!e.target.closest(".fav-in") && !e.target.closest(".fav-copy")) toggle(tr); }));
+  // клик по названию — скопировать его (для поиска на рынке в игре), детали не раскрываются
+  tbl.querySelectorAll(".fav-copy").forEach((b) => b.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const t = b.dataset.copy;
+    try { await navigator.clipboard.writeText(t); }
+    catch (err) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e2) { /* нет доступа к буферу */ } ta.remove(); }
+    toast(`Скопировано: ${t}`);
+  }));
   // поле в строке: Enter — сохранить и к следующему полю (дальше по строке, потом следующая строка);
   // ушёл из поля, поменяв цену, — тоже сохраняем
   const rowInputs = () => [...$("fav-table").querySelectorAll("tbody tr.rrow input[data-ord]")].sort((a, b) => a.dataset.ord - b.dataset.ord);

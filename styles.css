@@ -817,3 +817,10 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .tablebox.fav-fit #fav-table > thead{position:sticky;top:0;z-index:4}
 .tablebox.fav-fit #fav-table > thead th{background:var(--panel-solid)}
 .tablebox.fav-fit #fav-table > thead tr:first-child th{box-shadow:0 -16px 0 0 var(--panel-solid)}
+.grid.fav thead th.fav-cityname .city{font-size:13px;font-weight:700}
+.fav-copy{all:unset;cursor:copy;display:inline;font-weight:600;color:var(--ink);border-radius:6px}
+.fav-copy svg{width:13px;height:13px;margin-left:6px;vertical-align:-1px;fill:none;stroke:currentColor;stroke-width:1.8;opacity:0;transition:opacity .15s;color:var(--muted)}
+.fav-copy:hover svg,.fav-copy:focus-visible svg{opacity:1}
+.fav-copy:hover{color:var(--ink-2)}
+.fav-copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid.fav .iname .fav-copy{white-space:normal;max-width:170px;line-height:1.2}
