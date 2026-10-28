@@ -2410,6 +2410,7 @@ function favMarginCell(r) {
   return `<td><b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b><small class="age" style="display:block">${r.note}</small></td>`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку
+const FRESH_H = 4;
 // поле ввода цены: своя цена (жёлтая рамка) или серым — цена с сервера
 function favInput(id, c, side, ord, compact = false) {
   const sd = side === "sell" ? "s" : "b", man = S.manual[`${S.settings.server}|${id}`] || {}, m = man[c] && man[c][sd], a = apiOf(id, c, side);
@@ -2417,8 +2418,10 @@ function favInput(id, c, side, ord, compact = false) {
   const aAge = a ? (Date.now() - a.t) / 36e5 : NaN;
   const ph = a && aAge <= maxAge() ? fmt(a.p) : "—";
   const src = mine ? `<small class="fav-src man">${compact ? "" : "ты · "}${fmtAge((Date.now() - m[1]) / 36e5)}${compact ? "" : " назад"}</small>`
-    : a ? `<small class="fav-src">${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${compact ? "&nbsp;" : "нет цены"}</small>`;
-  return `<label class="fav-in${mine ? " on" : ""}${compact ? " sm" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
+    : a ? `<small class="fav-src${aAge < FRESH_H ? " fresh" : ""}">${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${compact ? "&nbsp;" : "нет цены"}</small>`;
+  // свежая цена с сервера (моложе FRESH_H часов) — ярче: видно, что уже обновлено
+  const fresh = !mine && a && aAge < FRESH_H;
+  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${compact ? " sm" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
 // У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта
