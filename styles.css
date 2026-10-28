@@ -823,3 +823,6 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .fav-copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .grid.fav .iname .fav-copy{white-space:normal;max-width:170px;line-height:1.2}
 .iname b .fav-star.sm{margin-left:6px;vertical-align:-6px;width:22px;height:22px}
+.grid tr.det .imx .ingn small.plim{color:var(--muted);cursor:help}
+.grid tr.det .imx .ingn small.plim b{color:var(--ink-2);font-weight:600}
+.grid tr.det .imx .ingn small.plim{white-space:nowrap} .grid tr.det .imx .ingn small.plim b{display:inline;font-size:inherit;line-height:inherit;white-space:nowrap}

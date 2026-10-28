@@ -2130,19 +2130,29 @@ function potDet(r) {
   // ингредиенты: строки — ингредиенты, столбцы — города «покупаю»; самый дешёвый город подсвечен
   const cities = buyCities();
   const head = `<tr><th scope="col"></th>${cities.map((cc) => `<th scope="col">${cityBadge(cc)}</th>`).join("")}<th scope="col">за крафт</th></tr>`;
+  // цвет цены — как на «Ценах»: какая выйдет маржа зелья, если купить этот ингредиент по этой цене,
+  // а остальные — там, где дешевле всего. Зелёный — не ниже своей маржи из «Условий», жёлтый — в плюсе, красный — в минусе
+  const tgt = c.m, keep = (x) => (isRareAlch(x.id) ? 1 : 1 - r.r), all = r.ing.reduce((a, x) => a + x.n * x.o.paid * keep(x), 0);
+  const income = r.net * r.out; // выручка с одного крафта после налога и уценки
   const body = r.ing.map((x) => {
-    const how = howOf(x.o), ref = weekRef(x.id);
+    const how = howOf(x.o), ref = weekRef(x.id), others = all - x.n * x.o.paid * keep(x), k = x.n * keep(x);
+    const limPaid = (m) => (income / (1 + m) - others) / k, fee = x.o.fee || 1;
+    const marginAt = (paid) => income / (others + k * paid) - 1;
+    const lim = limPaid(tgt), be = limPaid(0);
     const cells = cities.map((cc) => {
       const q = quoteBuy(x.id, cc, how);
       if (!q) return `<td class="na">—</td>`;
-      const best = cc === x.o.city, lv = q.odd ? "" : priceLevel(q.price, ref);
-      const tip = `${cc}: ${q.src === "order" ? "свой ордер" : "лот"} ${fmt(q.price)}${q.age !== undefined ? `, ${fmtAge(q.age)} назад` : ""}${isFinite(q.vol) ? `, ~${nf0.format(q.vol)} в день` : ""}${q.odd ? ". Не похоже на реальную цену" : ""}${ref ? `. Обычно за неделю: ${fmt(ref.p20)}–${fmt(ref.p80)}, медиана ${fmt(ref.med)}` : ""}`;
-      return `<td class="${best ? "best" : ""}${q.odd ? " odd" : ""}" title="${esc(tip)}"><span class="qc"><span class="qp ${lv}">${fmt(q.price)}${q.manual ? MSTAR : ""}</span><small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></span></td>`;
+      const best = cc === x.o.city, mg = marginAt(q.price * q.fee);
+      const g = q.odd ? "" : mg >= tgt ? "g-ok" : mg >= 0 ? "g-mid" : "g-bad";
+      const tip = `${cc}: ${q.src === "order" ? "свой ордер" : "лот"} ${fmt(q.price)}${q.age !== undefined ? `, ${fmtAge(q.age)} назад` : ""}${isFinite(q.vol) ? `, ~${nf0.format(q.vol)} в день` : ""}${q.odd ? ". Не похоже на реальную цену" : `. Маржа зелья по этой цене: ${mg < 0 ? "−" : ""}${nf0.format(Math.abs(mg * 100))}%`}${ref ? `. Обычно за неделю: ${fmt(ref.p20)}–${fmt(ref.p80)}` : ""}`;
+      return `<td class="${best ? "best" : ""}${q.odd ? " odd" : ""}" title="${esc(tip)}"><span class="qc"><span class="qp ${g}">${fmt(q.price)}${q.manual ? MSTAR : ""}</span><small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></span></td>`;
     }).join("");
-    return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small></span>${favBtn(x.id, true)}</span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
+    const limTxt = lim > 0 ? `бери до <b>${fmt(lim / fee)}</b>` : be > 0 ? `до ${nf0.format(tgt * 100)}% не дотянуть` : "в плюс не выйти";
+    const limTip = `Если остальные ингредиенты брать там, где дешевле всего: маржа ${nf0.format(tgt * 100)}% — до ${lim > 0 ? fmt(lim / fee) : "—"}, безубыток — до ${be > 0 ? fmt(be / fee) : "—"}${fee > 1 ? " (цена своего ордера, без сбора)" : ""}`;
+    return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small><small class="plim" title="${esc(limTip)}">${limTxt}</small></span>${favBtn(x.id, true)}</span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
   const how0 = r.ing.some((x) => x.o.src === "order") ? `свой ордер (лучший ордер +1), если ордеров нет — лот. «За крафт» — сколько уйдёт на ингредиент за один крафт: цена × количество, для ордера ещё +${fmtPct(orderFee() - 1)} сбора за выставление${relists() ? " с учётом перевыставлений" : ""}` : "самый дешёвый лот. «За крафт» — цена × количество на один крафт";
-  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — самый дешёвый город. Цвет цены — сравнение со сделками за неделю по всем городам: зелёная — дешевле обычного (в нижних 20%), красная — дороже обычного (в верхних 20%). Рядом — возраст цены, старше суток — жёлтым. При наведении на цену — обычный диапазон и объём продаж.`;
+  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — самый дешёвый город. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
   h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт. ${hint(legend)}</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
       <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div></div><div class="pstack">`;
