@@ -764,7 +764,7 @@ function renderPricesTable() {
       const { q, bestS, bestB } = cityQuotes(id, cities);
       const sel = id === S.pItem ? " sel" : "";
       const ll = limitLine(id), L = limitOf(id), M = marginModel(id, L);
-      const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small>${ll}</div>${favBtn(id)}</div>`;
+      const head = `<div class="item">${icon(id, 40)}<div class="iname"><b>${esc(info.name)}${favBtn(id, true)}</b><small>${info.kind === "raw" ? "сырьё" : "материал"}${stoneDiv(info) > 1 ? ` · 1 шт. = ${nf1.format(stoneDiv(info))} обычных` : ""}</small>${ll}</div></div>`;
       const dv = stoneDiv(info);
       h += `<tr tabindex="0" data-id="${esc(id)}" class="${sel}${tStart ? " tstart" : ""}"${tStart ? ` style="--tc:var(--t${info.t})"` : ""}><td>${head}</td><td class="tagcol"><div class="tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></div></td>`;
       m += `<section class="panel card${sel}" tabindex="0" data-id="${esc(id)}"><div class="card-h">${head.replace('<div class="item">', "").replace(/<\/div>$/, "")}</div>`
@@ -815,8 +815,11 @@ function renderPricesTable() {
 // маржа рядом с ценой — только если таблица влезает по ширине; иначе она остаётся в подсказке
 function fitMargins() {
   const tbl = $("p-table"), box = tbl.parentElement;
-  tbl.classList.remove("pm-off");
-  if (box.offsetParent && box.scrollWidth > box.clientWidth + 1) tbl.classList.add("pm-off");
+  tbl.classList.remove("pm-off", "tight");
+  if (!box.offsetParent) return;
+  const over = () => box.scrollWidth > box.clientWidth + 1;
+  if (over()) tbl.classList.add("tight");
+  if (over()) tbl.classList.add("pm-off");
 }
 let fitTimer;
 window.addEventListener("resize", () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => { if (S.view === "prices") fitMargins(); }, 150); });
