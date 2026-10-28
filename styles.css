@@ -796,3 +796,24 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .fav-det{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;align-items:start;max-width:1000px}
 .fav-det .fav-act{grid-column:1/-1;margin-top:0}
 .fav-usedl{display:flex;flex-wrap:wrap}
+
+/* «Избранное»: поля цен выглядят как таблица «Цен» — число без рамки, рамка у лучшей цены */
+.fav-in.sm{border-color:transparent;background:transparent;box-shadow:none}
+.fav-in.sm:hover{border-color:var(--line-2)}
+.fav-in.sm:focus-within{border-color:var(--accent);background:var(--panel)}
+.fav-in.sm input{text-align:right}
+.fav-in.sm input::placeholder{color:var(--faint);font-weight:500}
+.fav-in.fresh{border-color:transparent}
+.fav-in.sm.fresh input::placeholder{color:var(--ink);font-weight:600}
+.fav-in.sm.on{background:color-mix(in srgb,var(--star) 12%,transparent);border-color:transparent}
+.fav-in.sm.on input{color:var(--ink)}
+.fav-in.sm.best-s{box-shadow:inset 0 0 0 1.5px var(--bad)} .fav-in.sm.best-s input::placeholder,.fav-in.sm.best-s input{color:var(--bad)}
+.fav-in.sm.best-b{box-shadow:inset 0 0 0 1.5px var(--good)} .fav-in.sm.best-b input::placeholder,.fav-in.sm.best-b input{color:var(--good)}
+.fav-in.sm.best-s:not(.fresh):not(.on) input::placeholder,.fav-in.sm.best-b:not(.fresh):not(.on) input::placeholder{opacity:.7}
+.fav-src.fresh{color:var(--ink-2)}
+.fav-cc{font-weight:700;margin-right:4px;font-size:9.5px;letter-spacing:.02em}
+.fav-in.sm+.fav-src{text-align:right}
+.tablebox.fav-fit{overflow:visible}
+.tablebox.fav-fit #fav-table > thead{position:sticky;top:0;z-index:4}
+.tablebox.fav-fit #fav-table > thead th{background:var(--panel-solid)}
+.tablebox.fav-fit #fav-table > thead tr:first-child th{box-shadow:0 -16px 0 0 var(--panel-solid)}

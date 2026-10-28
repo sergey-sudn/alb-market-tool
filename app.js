@@ -2409,19 +2409,33 @@ function favMarginCell(r) {
   if (!isFinite(r.m)) return `<td><span class="empty">—</span>${r.note ? `<small class="age" style="display:block">${r.note}</small>` : ""}</td>`;
   return `<td><b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b><small class="age" style="display:block">${r.note}</small></td>`;
 }
-// редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку
+// поля ввода цен в «Избранном»
 const FRESH_H = 4;
 // поле ввода цены: своя цена (жёлтая рамка) или серым — цена с сервера
-function favInput(id, c, side, ord, compact = false) {
+// свежая — показанный возраст не больше FRESH_H часов («4 ч» ещё свежая)
+const isFreshH = (h) => isFinite(h) && Math.round(h) <= FRESH_H;
+// лучшие цены строки — как на «Ценах»: в «продают» и «покупают» по городам из «Условий»
+function favBest(id, cities) {
+  const { q, bestS, bestB } = cityQuotes(id, cities), out = { s: null, b: null };
+  for (const c of cities) {
+    const x = q[c]; if (!x) continue;
+    if (x.s && !x.s.odd && x.s.age <= maxAge() && x.s.p === bestS && !out.s) out.s = c;
+    if (x.b && !x.b.odd && x.b.age <= maxAge() && x.b.p === bestB && !out.b) out.b = c;
+  }
+  return out;
+}
+function favInput(id, c, side, ord, compact = false, best = false) {
   const sd = side === "sell" ? "s" : "b", man = S.manual[`${S.settings.server}|${id}`] || {}, m = man[c] && man[c][sd], a = apiOf(id, c, side);
   const mine = m && (!a || m[1] >= a.t) && (Date.now() - m[1]) / 36e5 <= maxAge();
   const aAge = a ? (Date.now() - a.t) / 36e5 : NaN;
   const ph = a && aAge <= maxAge() ? fmt(a.p) : "—";
-  const src = mine ? `<small class="fav-src man">${compact ? "" : "ты · "}${fmtAge((Date.now() - m[1]) / 36e5)}${compact ? "" : " назад"}</small>`
-    : a ? `<small class="fav-src${aAge < FRESH_H ? " fresh" : ""}">${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${compact ? "&nbsp;" : "нет цены"}</small>`;
-  // свежая цена с сервера (моложе FRESH_H часов) — ярче: видно, что уже обновлено
-  const fresh = !mine && a && aAge < FRESH_H;
-  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${compact ? " sm" : ""}"><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
+  // в узкой ячейке рядом с возрастом — код города, чтобы не путать столбцы, когда шапка уехала
+  const code = compact ? `<b class="fav-cc" style="color:${CITY_COLOR[c]}">${CITY_CODE[c] || ""}</b>` : "";
+  const fresh = !mine && a && isFreshH(aAge);
+  const src = mine ? `<small class="fav-src man">${code}${compact ? "" : "ты · "}${fmtAge((Date.now() - m[1]) / 36e5)}${compact ? "" : " назад"}</small>`
+    : a ? `<small class="fav-src${fresh ? " fresh" : ""}">${code}${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${code}${compact ? "" : "нет цены"}</small>`;
+  const bc = best ? ` best-${sd}` : "";
+  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${compact ? " sm" : ""}${bc}"${best ? ` title="Лучшая цена — как на «Ценах»"` : ""}><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
 // У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта
@@ -2444,7 +2458,7 @@ function favEditor(id, pots, mob = false) {
     // ноутбук: строки — зелье и ингредиенты, столбцы — города (лот и ордер)
     grid = `<div class="fav-mxw"><table class="fav-mx"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="2">${cityBadge(c)}</th>`).join("")}</tr>
       <tr>${cities.map(() => `<th scope="col"><span class="ptag s">продают</span></th><th scope="col"><span class="ptag b">покупают</span></th>`).join("")}</tr></thead>
-      <tbody>${items.map((it, k) => `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => `<td>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</td><td>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      <tbody>${items.map((it, k) => { const bst = favBest(it[0], cities); return `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => `<td>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true, bst.s === c)}</td><td>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true, bst.b === c)}</td>`).join("")}</tr>`; }).join("")}</tbody></table></div>`;
   }
   return `<div class="fav-ed${rec ? " pot" : ""}" data-items="${esc(JSON.stringify(items.map((x) => x[0])))}"><div class="det-b fav-grid"><h4>${rec ? "Цены зелья и ингредиентов" : "Цены по городам"} <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>${grid}${act}</div><div class="fav-side">${side}</div></div>`;
 }
@@ -2538,7 +2552,7 @@ function renderFav() {
       const ic = parseId(r.id) ? icon(r.id, 36) : fishIcon(r.id, 36);
       const mg = r.k === "ing" ? `<span class="empty" title="Своей маржи нет — смотри зелья в деталях">—</span>` : isFinite(r.m) ? `<b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b>` : `<span class="empty">—</span>`;
       h += `<tr class="rrow fav-row${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item"><button type="button" class="fav-tg" aria-label="Подробнее" aria-expanded="${open}">${CHEV}</button>${ic}<div class="iname"><b>${esc(itemLabel(r.id))}</b></div>${favBtn(r.id)}</div></td>`
-        + cities.map((c, ci) => `<td class="fav-c">${favInput(r.id, c, "sell", rowN * 100 + ci * 2, true)}</td><td class="fav-c2">${favInput(r.id, c, "buy", rowN * 100 + ci * 2 + 1, true)}</td>`).join("")
+        + ((bst) => cities.map((c, ci) => `<td class="fav-c" style="--cc:${CITY_COLOR[c]}">${favInput(r.id, c, "sell", rowN * 100 + ci * 2, true, bst.s === c)}</td><td class="fav-c2">${favInput(r.id, c, "buy", rowN * 100 + ci * 2 + 1, true, bst.b === c)}</td>`).join(""))(favBest(r.id, cities))
         + `<td>${mg}</td></tr>`
         + `<tr class="det"${open ? "" : " hidden"}><td colspan="${NC}"><div data-fdet="${esc(r.id)}">${open ? favDetail(r, pots) : ""}</div></td></tr>`;
       rowN++;
@@ -2550,6 +2564,7 @@ function renderFav() {
     }
   }
   tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
+  favFit();
   const toggle = (el) => {
     const key = el.dataset.key, open = !favOpen.has(key);
     if (open) favOpen.add(key); else favOpen.delete(key);
@@ -2584,6 +2599,14 @@ function renderFav() {
   });
   bindFavEditor(tbl); bindFavEditor(cards); bindFavDet(tbl);
 }
+// шапка с городами прилипает к верху экрана — но только если таблица влезает по ширине:
+// у прокручиваемого вбок блока «прилипание» работает лишь внутри него самого
+function favFit() {
+  const t = $("fav-table"), box = t && t.closest(".tablebox"); if (!box) return;
+  box.classList.remove("fav-fit");
+  if (t.scrollWidth <= box.clientWidth + 1) box.classList.add("fav-fit");
+}
+window.addEventListener("resize", () => { if (S.view === "fav") favFit(); });
 // детали строки на ноутбуке: у зелья — цены ингредиентов и итог, у остального — «используется в» и итог
 function favDetail(r, pots) {
   if (potRecipe(r.id)) return `<div data-fedit="${esc(r.id)}">${favEditor(r.id, pots)}</div>`;
