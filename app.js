@@ -76,7 +76,7 @@ const S = {
   view: "refine",
   pFams: ["stone", "fiber"], pTiers: [5, 6, 7, 8], pKind: "all", pEnchs: [0], pMode: "order", pMat: "resale", pItem: null,
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
-  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1, potTop: "margin",
+  cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1, potTop: "margin", potFav: false,
   // избранное и цены, введённые вручную: manual["сервер|id"][город] = { s: [цена лота, время], b: [цена ордера, время] }
   fav: [], manual: {}, favInc: "ask", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
@@ -84,7 +84,7 @@ const S = {
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["fav", "manual", "favInc", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["fav", "manual", "favInc", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -2230,7 +2230,8 @@ function openPotRow(id) {
 }
 function renderPot() {
   const key = POT_SORT[S.potSort], dir = S.potDir;
-  const all = potRows().filter((r) => S.potTiers.includes(potTier(r.id)));
+  const favOnly = S.potFav && viewOn("fav");
+  const all = potRows().filter((r) => S.potTiers.includes(potTier(r.id)) && (!favOnly || S.fav.includes(r.id)));
   const rows = all.sort((a, b) => (a.ok !== b.ok ? (a.ok ? -1 : 1) : !a.ok ? 0 : dir * (key(a) - key(b)) || b.margin - a.margin));
   const shown = S.potPlus ? rows.filter((r) => r.ok && r.profit > 0) : rows, c0 = calcSettings();
   renderPotWidgets(all);
@@ -2241,16 +2242,21 @@ function renderPot() {
     + `<span class="fsum">Где варишь</span>${seg("potWhere", [["brec", "Брецилиэн +15%"], ["city", "другой город"]])}`
     + `<span class="fsum">Фокус</span>${seg("potFocus", [["false", "без фокуса"], ["true", "с фокусом"]])}`
     + `<label class="switch"><input type="checkbox" id="pot-plus"${S.potPlus ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только в плюсе</span></label>`
+    + (viewOn("fav") ? `<label class="switch"><input type="checkbox" id="pot-fav"${S.potFav ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только избранное</span></label>` : "")
     + `<span class="k">возврат ${fmtPct(S.potFocus ? rf : r0)}</span>`
     + `<span class="mob pot-sortm"><span class="fsum">Сортировка</span>${seg("potSort", [["margin", "маржа"], ["profit", "за 1 шт."], ["vol", "продажи"]])}</span>`;
   chips($("pot-tiers"), [["all", "Все"], ...tierItems(POT_TIERS)], (v) => (v === "all" ? allT : S.potTiers.includes(v) && !allT),
     (v) => { S.potTiers = v === "all" ? [...POT_TIERS] : allT ? [v] : toggleIn(S.potTiers, v, POT_TIERS); save(); renderPot(); }, (v) => (v === "all" ? "" : tierCls(v)));
   $("pot-ctrl").querySelectorAll("[data-pk]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.pk; S[k] = k === "potFocus" ? b.dataset.v === "true" : b.dataset.v; if (k === "potSort") S.potDir = -1; save(); renderPot(); }));
   $("pot-plus").addEventListener("change", (e) => { S.potPlus = e.target.checked; save(); renderPot(); });
+  if ($("pot-fav")) $("pot-fav").addEventListener("change", (e) => { S.potFav = e.target.checked; save(); renderPot(); });
   const ingTip = (r) => r.ing.map((x) => `${itemLabel(x.id)} ×${x.n}: ${x.o ? `${fmt(x.o.price)} в ${x.o.city}${x.o.src === "order" ? " (свой ордер)" : ""}` : "нет цены"}`).join("\n") + (r.ok ? `\nНа выходе ${r.out} шт. за крафт` : "");
   const sh = (k, label, tip) => { const on = S.potSort === k; return `<th scope="col" aria-sort="${on ? (dir < 0 ? "descending" : "ascending") : "none"}"><button type="button" class="sorth${on ? " on" : ""}" data-sort="${k}" title="${tip}">${label}<span class="arr" aria-hidden="true">${on ? (dir < 0 ? "↓" : "↑") : "↕"}</span></button></th>`; };
   let h = `<thead><tr><th scope="col">Зелье</th><th scope="col">Продажа</th><th scope="col">Город</th>${sh("vol", "В день", "Сортировать по объёму продаж в день")}${sh("profit", "За 1 шт.", "Сортировать по прибыли с 1 зелья")}${sh("margin", "Маржа", "Сортировать по марже")}<th scope="col" class="c-stack">За стак</th><th scope="col" class="c-spark" title="Средняя цена сделок по дням в городе продажи">14 дней</th></tr></thead><tbody>`, m = "";
-  if (!shown.length) { h += `<tr><td class="msg" colspan="8">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе при этих условиях."}</td></tr>`; m = `<div class="panel card"><span class="k">${pending > 0 ? "Загружаю цены…" : "Нет зелий в плюсе."}</span></div>`; }
+  if (!shown.length) {
+    const msg = pending > 0 ? "Загружаю цены…" : favOnly && !S.fav.some((x) => x.includes("_POTION_")) ? "В избранном пока нет зелий — добавь их звёздочкой или выключи «Только избранное»." : favOnly ? "Среди избранных зелий под эти фильтры ничего не попало." : "Нет зелий в плюсе при этих условиях.";
+    h += `<tr><td class="msg" colspan="8">${msg}</td></tr>`; m = `<div class="panel card"><span class="k">${msg}</span></div>`;
+  }
   for (const r of shown) {
     const name = `<div class="item">${fishIcon(r.id, 36)}<div class="iname"><b>${esc(itemLabel(r.id))}</b></div>${favBtn(r.id)}</div>`;
     const cls = r.ok && r.profit >= 0 ? "pos" : "neg";
@@ -2321,9 +2327,10 @@ function favAdd(ids) {
   if (!add.length) return;
   S.fav = [...S.fav, ...add]; save(); favSync(add);
   if (S.view === "fav") openFav();
+  if (S.view === "pot" && S.potFav) renderPot();
 }
 function favToggle(id, btn) {
-  if (S.fav.includes(id)) { S.fav = S.fav.filter((x) => x !== id); save(); favSync([id]); if (S.view === "fav") renderFav(); return; }
+  if (S.fav.includes(id)) { S.fav = S.fav.filter((x) => x !== id); save(); favSync([id]); if (S.view === "fav") renderFav(); if (S.view === "pot" && S.potFav) renderPot(); return; }
   favAdd([id]);
   const rec = potRecipe(id); if (!rec) return;
   const ings = rec[3].map((x) => x[0]).filter((x) => !S.fav.includes(x));
