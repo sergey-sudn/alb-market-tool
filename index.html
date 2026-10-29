@@ -172,19 +172,20 @@
     <section class="view" id="view-journal" role="tabpanel" aria-labelledby="tab-journal" hidden>
       <div class="head head-row">
         <div>
-          <h1>Журнал сделок</h1>
-          <p class="sub">Записывай закупки, переработку и продажи. Журнал соберёт их в циклы и покажет реальную прибыль рядом с прогнозом, который был в момент начала цикла.</p>
+          <h1>Журнал</h1>
+          <p class="sub">Переписывай письма с рынка — журнал сам посчитает цену, налог и плату за размещение, будет вести склад и соберёт прибыль по периодам и разрезам. Плату за правки заказов записывай числом из окна заказа или оставь оценку.</p>
         </div>
         <div class="tool-btns">
           <button class="btn ghost" id="j-export" type="button">Выгрузить в файл</button>
           <label class="btn ghost filebtn">Загрузить из файла<input type="file" id="j-import" accept="application/json,.json"></label>
         </div>
       </div>
-      <div class="grid4" id="j-summary"></div>
-      <div class="journal-layout">
-        <div id="j-cycles" class="cycles"></div>
-        <aside class="panel j-form" id="j-form"></aside>
+      <div class="panel jr-rep" id="jr-report"></div>
+      <div class="jr-lay">
+        <div class="panel jr-feed" id="jr-feed"></div>
+        <aside class="panel j-form jr-form" id="jr-form"></aside>
       </div>
+      <p class="dn" id="jr-old" hidden>Записи старого журнала (по циклам) сохранены — они попадают в файл при выгрузке.</p>
     </section>
 
     <details class="how panel">
