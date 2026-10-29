@@ -826,3 +826,8 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid tr.det .imx .ingn small.plim{color:var(--muted);cursor:help}
 .grid tr.det .imx .ingn small.plim b{color:var(--ink-2);font-weight:600}
 .grid tr.det .imx .ingn small.plim{white-space:nowrap} .grid tr.det .imx .ingn small.plim b{display:inline;font-size:inherit;line-height:inherit;white-space:nowrap}
+/* шапка не влезает — прячем по очереди (fitBar) */
+.bar.b1 .status .st-long{display:none}
+.bar.b2 #sumhint{display:none}
+.bar.b3 .theme-seg{display:none}
+.bar .status,.bar .theme-seg{flex:none}

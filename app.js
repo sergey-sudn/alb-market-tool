@@ -205,7 +205,20 @@ function setStatus(long, short = "", state = "") {
   el.className = "status" + (state ? " " + state : "");
   el.title = state === "err" ? long : "";
   el.innerHTML = `<span class="dot"></span><span class="st-long">${esc(long)}${short ? " " : ""}</span>${esc(short)}`;
+  fitBar();
 }
+// шапка: если всё не влезает (7 вкладок на ноутбуке), прячем по очереди — текст статуса, подпись «Условий», переключатель темы
+// (тема есть и в «Условиях»). Иначе элементы наезжают друг на друга
+const BAR_STEPS = ["b1", "b2", "b3"];
+function fitBar() {
+  const bar = document.querySelector(".bar"), end = bar && bar.querySelector(".bar-end"); if (!end) return;
+  bar.classList.remove(...BAR_STEPS);
+  const hint = $("sumhint");
+  const over = () => end.scrollWidth > end.clientWidth + 1 || bar.scrollWidth > bar.clientWidth + 1 || (hint && hint.offsetParent && hint.scrollWidth > hint.clientWidth + 1);
+  for (const c of BAR_STEPS) { if (!over()) break; bar.classList.add(c); }
+}
+window.addEventListener("resize", () => fitBar());
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitBar()); // шрифт шире запасного — пересчитать, когда загрузится
 function progress() { if (pending > 0) setStatus("Загружаю цены…", `${done}/${done + pending}`, "busy"); }
 
 async function loadCurrent(ids, force = false) {
@@ -2662,7 +2675,7 @@ function applyTabs() {
     const a = document.querySelector(`.tabbar a[data-view="${v}"]`); if (a) a.hidden = !on;
   }
   const n = document.querySelectorAll(".tabbar a:not([hidden])").length;
-  const tb = document.querySelector(".tabbar"); tb.style.setProperty("--tabs", n); tb.classList.toggle("many", n >= 6);
+  const tb = document.querySelector(".tabbar"); tb.style.setProperty("--tabs", n); tb.classList.toggle("many", n >= 6); fitBar();
 }
 
 const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "journal"];
