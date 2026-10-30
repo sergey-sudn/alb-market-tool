@@ -178,8 +178,10 @@
         <div class="tool-btns">
           <button class="btn ghost" id="j-export" type="button">Выгрузить в файл</button>
           <label class="btn ghost filebtn">Загрузить из файла<input type="file" id="j-import" accept="application/json,.json"></label>
+          <label class="btn ghost filebtn" title="Файл client.db из папки AlbionMarketDataClient\data. Закрой клиент перед копированием, чтобы попали последние письма.">Импорт из Albion Market<input type="file" id="j-am" accept=".db,application/octet-stream,application/x-sqlite3"></label>
         </div>
       </div>
+      <p class="panel jr-am" id="jr-am" hidden></p>
       <div class="panel jr-rep" id="jr-report"></div>
       <div class="jr-lay">
         <div class="panel jr-feed" id="jr-feed"></div>

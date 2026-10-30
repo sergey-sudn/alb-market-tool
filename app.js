@@ -2006,6 +2006,7 @@ function bindSettings() {
   $("c-reset").addEventListener("click", () => { S.calc[S.cFam] = emptyCalc(); save(); buildTiers(); updateCalc(); });
   $("j-export").addEventListener("click", exportJournal2);
   $("j-import").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importJournal2(f); e.target.value = ""; });
+  $("j-am").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importAlbionMarket(f); e.target.value = ""; });
 }
 
 // ---------- навигация ----------
@@ -2715,10 +2716,10 @@ function jFlows(e) {
   const o = { qty: [], cash: 0, tax: 0, fee: 0, est: 0, station: 0, item: e.item };
   if (e.type === "buy" || e.type === "take") {
     const q = e.netQty ?? e.qty, s = e.netSpent ?? e.spent;
-    o.qty.push([e.item, q]); o.cash = -s; o.est = (e.estFee ?? (e.listed ? e.listed * e.price : s)) * SETUP_RATE();
+    o.qty.push([e.item, q]); o.cash = -s; o.est = e.instant ? 0 : (e.estFee ?? (e.listed ? e.listed * e.price : s)) * SETUP_RATE();
   } else if (e.type === "sell") {
     o.qty.push([e.item, -e.qty]); o.cash = e.gross - e.tax; o.tax = e.tax;
-    o.est = (e.listed && e.qty ? e.listed * (e.gross / e.qty) : e.gross) * SETUP_RATE();
+    o.est = e.instant ? 0 : (e.listed && e.qty ? e.listed * (e.gross / e.qty) : e.gross) * SETUP_RATE();
   } else if (e.type === "fee") { o.fee = e.amount; }
   else if (e.type === "refine" || e.type === "brew") {
     o.qty.push([e.item, e.qty]); for (const x of e.ins || []) o.qty.push([x.item, -x.qty]); o.station = e.station || 0;
@@ -2808,7 +2809,7 @@ function renderJ2Report() {
       ${tile("Получено с продаж", jMoney(pick.got), `после налога ${jMoney(-pick.tax)}`)}
       ${tile("Сборы за размещение", jMoney(-(pick.fee + pick.est)), `${jMoney(pick.fee).replace(/^\+/, "")} записано · ${jMoney(pick.est).replace(/^\+/, "")} оценка`, "neg")}
       ${tile("Станок", jMoney(-pick.station), "переработка и варка")}
-      ${tile("Склад: изменение", jMoney(pick.d), `на руках сейчас ~${jMoney(stockVal).replace(/^\+/, "")} по рынку`)}
+      ${tile("Склад: изменение", jMoney(pick.d), `на руках сейчас ${stockVal < 0 ? "" : "~"}${jMoney(stockVal).replace(/^\+/, "")} по рынку`)}
       ${tile("Итог за период", jMoney(result), costs > 0 ? `маржа ${nf0.format(result / costs * 100)}% к затратам` : "деньги + изменение склада", `${result >= 0 ? "pos" : "neg"} big`)}
     </div>`;
     if (slices.length > 1 && cur === "all") {
@@ -2830,6 +2831,11 @@ function renderJ2Report() {
 }
 
 function jEntryText(e) {
+  const r = jEntryText0(e);
+  if (e.src === "am") r.s += e.instant ? " · в кнопку · Albion Market" : " · Albion Market";
+  return r;
+}
+function jEntryText0(e) {
   const city = e.city ? ` · ${esc(e.city)}` : "", name = e.item ? esc(itemLabel(e.item)) : "";
   if (e.type === "buy") return { t: `${name}${city}`, s: `${e.listed ? `куплено ${fmt(e.qty)} из ${fmt(e.listed)}` : `куплено ${fmt(e.qty)}`} · ${fmt(e.price)} за шт.${e.netQty !== undefined && e.netQty !== e.qty ? ` · из них ${fmt(e.qty - e.netQty)} уже было в «Забрал»` : ""}`, m: -(e.netSpent ?? e.spent), tag: e.derived ? "оценка цены" : "" };
   if (e.type === "take") return { t: `${name}${city}`, s: `забрал ${fmt(e.qty)} из открытого заказа · ${fmt(e.price)} за шт.${e.settled ? " · закрыто письмом" : " · ждёт письма"}`, m: -e.spent, tag: e.settled ? "" : "ждёт письма" };
@@ -2861,6 +2867,7 @@ function renderJ2Feed() {
     const e = L.entries.find((x) => x.id === id);
     // письмо, закрывавшее «Забрал», при удалении снова открывает их
     if (e && e.type === "buy" && e.settles) for (const t of L.entries) if (e.settles.includes(t.id)) delete t.settled;
+    if (e && e.src === "am") L.amSkip = [...new Set([...(L.amSkip || []), id])];
     L.entries = L.entries.filter((x) => x.id !== id); saveL(); renderJournal(); toast("Запись удалена");
   }));
   const more = $("jr-more"); if (more) more.addEventListener("click", () => { jFeedN += 100; renderJ2Feed(); });
@@ -3022,7 +3029,7 @@ function jSave() {
 function renderJournal() {
   if (!$("jr-report")) return;
   if (!$("jr-cat")) { const dl = document.createElement("datalist"); dl.id = "jr-cat"; dl.innerHTML = jCatalog().map((x) => `<option value="${esc(x.label)}"></option>`).join(""); document.body.appendChild(dl); }
-  renderJ2Report(); renderJ2Feed(); renderJ2Form();
+  renderJ2Report(); renderJ2Feed(); renderJ2Form(); renderAmNote();
   const old = $("jr-old"); if (old) old.hidden = !(J.cycles && J.cycles.length);
 }
 async function openJournal(force = false) {
@@ -3033,7 +3040,7 @@ async function openJournal(force = false) {
   if (S.view === "journal") renderJournal();
 }
 function exportJournal2() {
-  const blob = new Blob([JSON.stringify({ app: "alb-market-tool", v: 2, exported: new Date().toISOString(), entries: L.entries, old: J }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "alb-market-tool", v: 2, exported: new Date().toISOString(), entries: L.entries, amSkip: L.amSkip || [], old: J }, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = `albion-journal-${isoDay(new Date())}.json`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -3049,6 +3056,118 @@ async function importJournal2(file) {
     }
     await importJournal(file); // старый формат — в старый журнал
   } catch (e) { toast("Не получилось прочитать файл журнала"); }
+}
+
+// --- импорт из базы клиента Albion Market (client.db): письма рынка и сделки «в кнопку»
+// читается в браузере через sql.js, файл никуда не отправляется; таблицу с токеном входа не трогаем
+const AM_SQL = "https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/";
+let amSqlP = null;
+function amSql() {
+  if (!amSqlP) amSqlP = new Promise((ok, no) => {
+    const sc = document.createElement("script"); sc.src = AM_SQL + "sql-wasm.js";
+    sc.onload = () => window.initSqlJs({ locateFile: (f) => AM_SQL + f }).then(ok, no);
+    sc.onerror = () => { amSqlP = null; no(new Error("sql.js")); };
+    document.head.appendChild(sc);
+  });
+  return amSqlP;
+}
+// id рынка → город: точные известные id, иначе по первой цифре
+function amCity(raw) {
+  const r = String(raw || "").trim().split(/[@-]/)[0].padStart(4, "0");
+  if (/^(3003|3005|3006|3013)$/.test(r)) return "Caerleon";
+  if (/^(3004|3007|3008|3301)$/.test(r)) return "Martlock";
+  return { 0: "Thetford", 1: "Lymhurst", 2: "Bridgewatch", 4: "Fort Sterling", 5: "Brecilien" }[r[0]] || "";
+}
+const amTs = (t) => { const v = Date.parse(t || ""); return isFinite(v) ? v : 0; };
+function amRows(db, sql) {
+  const out = [];
+  try { const st = db.prepare(sql); while (st.step()) out.push(st.getAsObject()); st.free(); } catch (e) { /* таблицы может не быть */ }
+  return out;
+}
+// разбор базы в записи журнала; mtBuyFin=2, mtBuyExp=3, mtSellFin=1, mtSellExp=4, mtBMSell=5
+function amEntries(db) {
+  const taxR = +S.settings.fee >= 0.1 ? 0.08 : 0.04, res = { entries: [], unread: 0, empty: 0, players: new Set() };
+  const mails = amRows(db, "SELECT Id,IsSet,ItemId,RawLocationId,PlayerName,PartialAmount,TotalAmount,Received,TotalSilver,Type,UnitSilver FROM mails WHERE Deleted=0");
+  for (const m of mails) {
+    if (!m.IsSet) { res.unread++; continue; }
+    const item = String(m.ItemId || ""), q = +m.PartialAmount || 0, y = +m.TotalAmount || 0, unit = +m.UnitSilver || 0, tot = +m.TotalSilver || 0;
+    if (!item || !q) { res.empty++; continue; }
+    if (m.PlayerName) res.players.add(m.PlayerName);
+    const base = { id: `am-m-${m.Id}`, src: "am", ts: amTs(m.Received), item, city: amCity(m.RawLocationId) };
+    if (m.Type === 2) res.entries.push({ ...base, type: "buy", qty: q, spent: tot || Math.round(q * unit), price: (tot || q * unit) / q });
+    else if (m.Type === 3) res.entries.push({ ...base, type: "buy", qty: q, listed: y || undefined, price: unit, spent: Math.round(q * unit), derived: true });
+    else if (m.Type === 1 || m.Type === 4 || m.Type === 5) {
+      // в письме сумма до налога; если она заметно меньше «цена × кол-во» — это уже после налога
+      const full = unit * q; let gross = tot || Math.round(full), tax;
+      if (m.Type === 1 && full && tot && tot < full * 0.985) { gross = Math.round(full); tax = gross - tot; } else tax = Math.round(gross * taxR);
+      res.entries.push({ ...base, type: "sell", qty: q, listed: m.Type !== 1 && y ? y : undefined, gross, tax });
+    }
+  }
+  // сделки по заказам дублируют письма — берём только «в кнопку» (Type=0): Operation 0 — купил, 1 — продал
+  const trades = amRows(db, "SELECT Id,Amount,DateTime,ItemId,RawLocationId,Operation,PlayerName,Type,UnitSilver FROM trades WHERE Deleted=0 AND Type=0");
+  for (const t of trades) {
+    const q = +t.Amount || 0, unit = +t.UnitSilver || 0, item = String(t.ItemId || "");
+    if (!q || !unit || !item) continue;
+    if (t.PlayerName) res.players.add(t.PlayerName);
+    const base = { id: `am-t-${t.Id}`, src: "am", instant: true, ts: amTs(t.DateTime), item, city: amCity(t.RawLocationId) };
+    const sum = Math.round(q * unit);
+    if (+t.Operation === 0) res.entries.push({ ...base, type: "buy", qty: q, spent: sum, price: unit });
+    else res.entries.push({ ...base, type: "sell", qty: q, gross: sum, tax: Math.round(sum * taxR) });
+  }
+  res.entries.sort((a, b) => a.ts - b.ts);
+  return res;
+}
+// то же письмо, уже переписанное руками: тот же тип, предмет и количество, сумма ±2%, записано в течение недели после письма
+function amManualDup(e) {
+  const money = (x) => (x.type === "buy" ? x.spent : x.gross);
+  return L.entries.find((x) => x.src !== "am" && !x.amDup && x.type === e.type && x.item === e.item && x.qty === e.qty
+    && Math.abs(money(x) - money(e)) <= Math.max(2, money(e) * 0.02) && x.ts >= e.ts - 36e5 && x.ts <= e.ts + 7 * 864e5);
+}
+async function importAlbionMarket(file) {
+  let SQL;
+  try { SQL = await amSql(); } catch (e) { toast("Не загрузился модуль чтения базы — проверь интернет и попробуй ещё раз"); return; }
+  let db;
+  try {
+    const u = new Uint8Array(await file.arrayBuffer());
+    if (new TextDecoder().decode(u.subarray(0, 15)) !== "SQLite format 3") { toast("Это не файл базы — нужен client.db из папки AlbionMarketDataClient\\data"); return; }
+    if (u[18] === 2) { u[18] = 1; u[19] = 1; } // режим WAL → обычный, иначе sql.js не откроет копию
+    db = new SQL.Database(u);
+  } catch (e) { toast("Не получилось открыть базу"); return; }
+  let r;
+  try { r = amEntries(db); } finally { db.close(); }
+  const have = new Set(L.entries.flatMap((e) => (e.amDup ? [e.id, e.amDup] : [e.id]))), skip = new Set(L.amSkip || []);
+  let added = 0, known = 0, dups = 0;
+  for (const e of r.entries) {
+    if (have.has(e.id) || skip.has(e.id)) { known++; continue; }
+    const d = amManualDup(e); if (d) { d.amDup = e.id; dups++; continue; }
+    if (e.type === "buy" && !e.instant) {
+      // письмо закрывает «Забрал» по тому же предмету и городу, записанные до письма
+      const takes = jOpenTakes(e.item, e.city).filter((t) => t.ts <= e.ts + 36e5);
+      if (takes.length) {
+        const tq = takes.reduce((a, x) => a + x.qty, 0), ts = takes.reduce((a, x) => a + x.spent, 0);
+        e.netQty = Math.max(0, e.qty - tq); e.netSpent = Math.max(0, e.spent - ts); e.settles = takes.map((x) => x.id);
+        for (const t of takes) t.settled = e.id;
+      }
+    }
+    L.entries.push(e); added++;
+  }
+  saveL();
+  const blank = !r.entries.length && !r.unread && !r.empty;
+  S.j2.amLast = { at: Date.now(), added, known, dups, unread: r.unread, blank, players: [...r.players] }; save();
+  renderJournal(); openJournal();
+  toast(blank ? "В базе нет ни писем, ни сделок — закрой клиент Albion Market и скопируй файл снова" : added ? `Добавлено записей: ${added}` : "Новых записей нет");
+}
+function renderAmNote() {
+  const box = $("jr-am"); if (!box) return;
+  const a = S.j2.amLast; if (!a) { box.hidden = true; return; }
+  box.hidden = false;
+  const parts = [`новых записей <b>${fmt(a.added)}</b>`];
+  if (a.known) parts.push(`уже были ${fmt(a.known)}`);
+  if (a.dups) parts.push(`совпали с переписанными вручную ${fmt(a.dups)} — пропущены`);
+  if (a.blank) parts.push(`<span class="warn">в файле пусто — если клиент был открыт, последние данные остались в соседнем файле client.db-wal; закрой клиент и скопируй client.db снова</span>`);
+  if (a.unread) { const n = a.unread, m10 = n % 10, m100 = n % 100, one = m10 === 1 && m100 !== 11, few = m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14); parts.push(`<span class="warn">${fmt(n)} ${one ? "письмо не открыто" : few ? "письма не открыты" : "писем не открыто"} при работающем клиенте — их суммы неизвестны, открой их в игре с клиентом и импортируй снова</span>`); }
+  box.innerHTML = `Импорт из Albion Market ${dShort(a.at)}: ${parts.join(" · ")}${a.players && a.players.length > 1 ? ` · персонажи: ${a.players.map(esc).join(", ")}` : ""} <button type="button" class="jr-am-x" title="Скрыть">✕</button>`;
+  box.querySelector(".jr-am-x").addEventListener("click", () => { S.j2.amLast = null; save(); box.hidden = true; });
 }
 
 // дополнительные вкладки включаются в «Условиях»
