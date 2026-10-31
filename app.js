@@ -2006,6 +2006,16 @@ function bindSettings() {
   $("c-reset").addEventListener("click", () => { S.calc[S.cFam] = emptyCalc(); save(); buildTiers(); updateCalc(); });
   $("j-export").addEventListener("click", exportJournal2);
   $("j-import").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importJournal2(f); e.target.value = ""; });
+  // файл можно просто перетащить на страницу журнала: окно выбора на macOS иногда не даёт выбрать client.db
+  const jv = $("view-journal");
+  jv.addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); jv.classList.add("jr-drop"); } });
+  jv.addEventListener("dragleave", (e) => { if (!jv.contains(e.relatedTarget)) jv.classList.remove("jr-drop"); });
+  jv.addEventListener("drop", async (e) => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; jv.classList.remove("jr-drop");
+    if (!f) return; e.preventDefault();
+    const head = new TextDecoder().decode(new Uint8Array(await f.slice(0, 15).arrayBuffer()));
+    if (head === "SQLite format 3") importAlbionMarket(f); else importJournal2(f);
+  });
   $("j-am").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) importAlbionMarket(f); e.target.value = ""; });
 }
 
