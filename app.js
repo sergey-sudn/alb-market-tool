@@ -2969,10 +2969,18 @@ function jInsRender() {
   const box = $("jr-ins"); if (!box) return;
   if (!jF.ins) jF.ins = jInsDefault();
   const brew = S.j2.tab === "brew";
-  box.innerHTML = `<span class="k">Ушло на вход — по рецепту и возврату ${brew ? "" : "(у камня — зачарованный .3, поменяй, если брал другой)"}; поправь, если вышло иначе</span>`
+  box.innerHTML = `<span class="k">Ушло на вход — по рецепту и возврату ${brew ? "" : "(у камня — .3; выбери .1/.2 или обычный, если брал его, — количество пересчитается)"}; поправь, если вышло иначе</span>`
     + jF.ins.map((x, i) => `<div class="jr-inr"><span class="jr-pick">${x.item ? jIcon(x.item, 22) : ""}<input class="in" list="jr-cat" data-ini="${i}" value="${x.item ? esc(jLabel(x.item)) : ""}" placeholder="Предмет"></span><input class="in jr-inq" data-inq="${i}" inputmode="numeric" value="${x.qty ? fmt(x.qty) : ""}"><button type="button" class="jr-x" data-indel="${i}" title="Убрать">✕</button></div>`).join("")
     + `<button type="button" class="linkbtn" id="jr-inadd">+ ещё вход</button>`;
-  box.querySelectorAll("[data-ini]").forEach((el) => el.addEventListener("change", () => { const f = jFind(el.value); jF.ins[+el.dataset.ini].item = f ? f.id : ""; jInsRender(); }));
+  box.querySelectorAll("[data-ini]").forEach((el) => el.addEventListener("change", () => {
+    const f = jFind(el.value), x = jF.ins[+el.dataset.ini], was = parseId(x.item || ""), now = f ? parseId(f.id) : null;
+    // камень другого зачарования того же тира: пересчитываем количество — .1/.2/.3 дают ×2/×4/×8 блоков
+    if (was && now && was.kind === "raw" && now.kind === "raw" && was.f === now.f && was.t === now.t && FAM[now.f].stone && x.qty) {
+      const mult = calcSettings(now.f).mult, m = (e) => (e ? mult[e - 1] || 2 ** e : 1);
+      x.qty = Math.round(x.qty * m(was.e) / m(now.e));
+    }
+    x.item = f ? f.id : ""; jInsRender();
+  }));
   box.querySelectorAll("[data-inq]").forEach((el) => el.addEventListener("input", () => { jF.ins[+el.dataset.inq].qty = +(el.value.replace(/[^\d]/g, "")) || 0; }));
   box.querySelectorAll("[data-indel]").forEach((el) => el.addEventListener("click", () => { jF.ins.splice(+el.dataset.indel, 1); jInsRender(); }));
   $("jr-inadd").addEventListener("click", () => { jF.ins.push({ item: "", qty: 0 }); jInsRender(); });
