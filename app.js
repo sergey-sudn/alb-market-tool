@@ -2041,11 +2041,12 @@ function fishGroups() {
 }
 const fishIds = () => [...fishGroups().flatMap((g) => g.rows.map((r) => r.id)), CHOPS, WEED, ...SAUCES.map((x) => x[0])];
 function fishIcon(id, size = 40) {
-  const t = /^T(\d)/.exec(id)[1];
-  const local = `images/items/${id}.webp`, remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
+  // у добычи и жетонов (TREASURE_…, QUESTITEM_…) тира в названии нет
+  const m = /^T(\d)/.exec(id), t = m ? m[1] : "";
+  const local = `images/items/${id.replace("@", "_")}.webp`, remote = `https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=128&amp;quality=1`;
   return `<span class="ic t${t}" style="--s:${size}px;--tc:var(--t${t})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c3-4 7-6 11-6 3 0 5 2 7 6-2 4-4 6-7 6-4 0-8-2-11-6z"/></svg>`
     + `<img src="${local}" data-remote="${remote}" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling&&this.previousElementSibling.tagName==='svg'&&this.previousElementSibling.remove()" onerror="if(this.dataset.remote){this.src=this.dataset.remote;this.dataset.remote=''}else this.remove()">`
-    + `<span class="tier">T${t}</span></span>`;
+    + (t ? `<span class="tier">T${t}</span>` : "") + `</span>`;
 }
 // цена продажи своим лотом в лучшем городе из «продаю» — как в «Переработке»
 const fishSell = (id) => pickSell(id);
@@ -3093,7 +3094,7 @@ function amCity(raw) {
   if (/^(3004|3007|3008|3301)$/.test(r)) return "Martlock";
   return { 0: "Thetford", 1: "Lymhurst", 2: "Bridgewatch", 4: "Fort Sterling", 5: "Brecilien" }[r[0]] || "";
 }
-const amTs = (t) => { const v = Date.parse(t || ""); return isFinite(v) ? v : 0; };
+const amTs = (t) => { const v = Date.parse(t || ""); return isFinite(v) && v > 1.5e12 ? v : Date.now(); };
 function amRows(db, sql) {
   const out = [];
   try { const st = db.prepare(sql); while (st.step()) out.push(st.getAsObject()); st.free(); } catch (e) { /* таблицы может не быть */ }
