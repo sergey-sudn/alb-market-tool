@@ -2686,7 +2686,7 @@ try { const j = JSON.parse(localStorage.getItem(J2KEY) || "null"); if (j && Arra
 function saveL() { try { localStorage.setItem(J2KEY, JSON.stringify(L)); } catch (e) { toast("Не удалось сохранить: хранилище браузера недоступно"); } }
 const JT = { buy: "Покупка", sell: "Продажа", fee: "Сбор", take: "Забрал", refine: "Переработка", brew: "Варка" };
 // состояние формы и отчёта живёт только пока открыта страница; что удобно помнить — в S.j2
-S.j2 = { tab: "mail", side: "buy", done: true, period: "7", slice: "all", feed: "all", from: "", to: "", focus: true, potWhere: "brec", ...(S.j2 && typeof S.j2 === "object" ? S.j2 : {}) };
+S.j2 = { tab: "mail", side: "buy", feeKind: "order", mode: "cash", done: true, period: "7", slice: "all", feed: "all", from: "", to: "", focus: true, potWhere: "brec", ...(S.j2 && typeof S.j2 === "object" ? S.j2 : {}) };
 
 // --- каталог предметов для выбора: всё, у чего есть русское название
 let jCat = null;
@@ -2715,7 +2715,7 @@ function jSliceName(k) {
   if (k === "pot") return "Зелья";
   if (k === "fish") return "Рыба";
   if (k === "other") return "Прочее";
-  const [f, t] = k.split(":"); return `${FAM[f] ? FAM[f].tab : f} T${t}`;
+  const [f, t] = k.split(":"); return t ? `${FAM[f] ? FAM[f].tab : f} T${t}` : (FAM[f] ? FAM[f].tab : f);
 }
 
 // --- что даёт каждая запись: движение товара и денег
@@ -2731,7 +2731,7 @@ function jFlows(e) {
   } else if (e.type === "sell") {
     o.qty.push([e.item, -e.qty]); o.cash = e.gross - e.tax; o.tax = e.tax;
     o.est = e.instant ? 0 : (e.listed && e.qty ? e.listed * (e.gross / e.qty) : e.gross) * SETUP_RATE();
-  } else if (e.type === "fee") { o.fee = e.amount; }
+  } else if (e.type === "fee") { if (e.kind === "station") o.station = e.amount; else o.fee = e.amount; }
   else if (e.type === "refine" || e.type === "brew") {
     o.qty.push([e.item, e.qty]); for (const x of e.ins || []) o.qty.push([x.item, -x.qty]); o.station = e.station || 0;
   }
@@ -2764,22 +2764,26 @@ function jPeriod() {
   return [now - (+d || 7) * 864e5, Infinity];
 }
 // отчёт за период: деньги + изменение склада по рынку; по разрезам — с передачей полуфабрикатов между разрезами
+// в режиме «по деньгам» ресурс считается одним разрезом на все тиры: блоки T6 уходят в T7 без записи переработки
+const jCash = () => S.j2.mode !== "stock";
+function jSliceR(id) { if (jCash()) { const p = parseId(id); if (p) return p.f; } return jSlice(id); }
 function jReport() {
-  const [from, to] = jPeriod();
+  const [from, to] = jPeriod(), cash = jCash();
   const inP = L.entries.filter((e) => e.ts >= from && e.ts <= to);
   const sl = {}, S0 = (k) => (sl[k] = sl[k] || { spent: 0, got: 0, tax: 0, fee: 0, est: 0, station: 0, tin: 0, tout: 0, d: 0 });
   // сборы, записанные вручную, выключают оценку для своего предмета за период
-  const feeItems = new Set(inP.filter((e) => e.type === "fee" && e.item).map((e) => e.item));
-  const untagged = inP.some((e) => e.type === "fee" && !e.item);
+  const isOrdFee = (e) => e.type === "fee" && e.kind !== "station";
+  const feeItems = new Set(inP.filter((e) => isOrdFee(e) && e.item).map((e) => e.item));
+  const untagged = inP.some((e) => isOrdFee(e) && !e.item);
   for (const e of inP) {
-    const f = jFlows(e), k = e.item ? jSlice(e.item) : "other", s = S0(k);
+    const f = jFlows(e), k = e.item ? jSliceR(e.item) : (e.kind === "station" ? "stone" : "other"), s = S0(k);
     if (e.type === "buy" || e.type === "take") s.spent += -f.cash;
     if (e.type === "sell") { s.got += f.cash; s.tax += f.tax; }
-    if (e.type === "fee") S0(e.item ? jSlice(e.item) : "other").fee += f.fee;
+    if (e.type === "fee") { s.fee += f.fee; s.station += f.station; }
     if ((e.type === "buy" || e.type === "take" || e.type === "sell") && !feeItems.has(e.item) && !untagged) s.est += f.est;
     if (e.type === "refine" || e.type === "brew") {
       s.station += f.station;
-      for (const x of e.ins || []) { const v = x.qty * jValue(x.item), ks = jSlice(x.item); if (ks !== k) { S0(ks).tout += v; s.tin += v; } }
+      if (!cash) for (const x of e.ins || []) { const v = x.qty * jValue(x.item), ks = jSlice(x.item); if (ks !== k) { S0(ks).tout += v; s.tin += v; } }
     }
   }
   // изменение склада по разрезам
@@ -2787,7 +2791,7 @@ function jReport() {
   const ids = new Set([...Object.keys(st0), ...Object.keys(st1)]), stock = [];
   for (const id of ids) {
     const q0 = st0[id] || 0, q1 = st1[id] || 0, v = jValue(id);
-    if (q1 !== q0) S0(jSlice(id)).d += (q1 - q0) * v;
+    if (q1 !== q0 && !cash) S0(jSlice(id)).d += (q1 - q0) * v;
     if (q1) stock.push({ id, q: q1, v, val: q1 * v });
   }
   const res = (s) => s.got - s.spent - s.fee - s.est - s.station + s.d + s.tout - s.tin;
@@ -2804,13 +2808,14 @@ function renderJ2Report() {
   const pick = cur === "all" ? t : r.sl[cur] || { spent: 0, got: 0, tax: 0, fee: 0, est: 0, station: 0, tin: 0, tout: 0, d: 0 };
   const segB = (items, on, attr) => `<span class="seg">${items.map(([v, l]) => `<button type="button" ${attr}="${v}" aria-pressed="${on === v}">${l}</button>`).join("")}</span>`;
   const tile = (k, v, sub, cls = "") => `<div class="jr-tile"><span class="k">${k}</span><b class="${cls}">${v}</b><small>${sub}</small></div>`;
-  const stockOf = r.stock.filter((x) => cur === "all" || jSlice(x.id) === cur);
+  const cash = jCash(), stockOf = cash ? [] : r.stock.filter((x) => cur === "all" || jSlice(x.id) === cur);
   const neg = stockOf.filter((x) => x.q < 0);
   const stockVal = stockOf.reduce((a, x) => a + x.val, 0);
   const result = r.res(pick), costs = r.cost(pick);
   const rangeTxt = (isFinite(r.from) ? dShort(r.from) : "с начала") + " — " + (isFinite(r.to) && S.j2.period === "custom" ? dShort(r.to) : "сейчас");
   let h = `<div class="jr-rep-h"><div class="jr-rep-f"><span class="fsum">Период</span>${segB([["3", "3 дня"], ["7", "7 дней"], ["30", "30 дней"], ["all", "Всё время"], ["custom", "Свои даты"]], S.j2.period, "data-jper")}`
     + (S.j2.period === "custom" ? `<input class="in jr-date" type="date" id="jr-from" value="${S.j2.from}"><span class="k">—</span><input class="in jr-date" type="date" id="jr-to" value="${S.j2.to}">` : `<span class="k">${rangeTxt}</span>`) + `</div>`
+    + `<div class="jr-rep-f"><span class="fsum">Считать</span>${segB([["cash", "По деньгам"], ["stock", "Со складом"]], cash ? "cash" : "stock", "data-jmode")}</div>`
     + `<div class="jr-rep-f"><span class="fsum">Разрез</span><span class="chips" id="jr-slices"></span></div></div>`;
   if (!r.n && !stockOf.length) {
     h += `<p class="w-empty">${L.entries.length ? "За этот период записей нет." : "Записей пока нет. Перепиши первое письмо с рынка в форму справа — отчёт появится здесь."}</p>`;
@@ -2820,12 +2825,13 @@ function renderJ2Report() {
       ${tile("Получено с продаж", jMoney(pick.got), `после налога ${jMoney(-pick.tax)}`)}
       ${tile("Сборы за размещение", jMoney(-(pick.fee + pick.est)), `${jMoney(pick.fee).replace(/^\+/, "")} записано · ${jMoney(pick.est).replace(/^\+/, "")} оценка`, "neg")}
       ${tile("Станок", jMoney(-pick.station), "переработка и варка")}
-      ${tile("Склад: изменение", jMoney(pick.d), `на руках сейчас ${stockVal < 0 ? "" : "~"}${jMoney(stockVal).replace(/^\+/, "")} по рынку`)}
-      ${tile("Итог за период", jMoney(result), costs > 0 ? `маржа ${nf0.format(result / costs * 100)}% к затратам` : "деньги + изменение склада", `${result >= 0 ? "pos" : "neg"} big`)}
+      ${cash ? tile("Ещё не вернулось", result < 0 ? jMoney(-result).replace(/^\+/, "") : "0", result < 0 ? "если партия ещё продаётся — это деньги в обороте; если продана целиком — убыток" : "вложенное уже окупилось продажами")
+        : tile("Склад: изменение", jMoney(pick.d), `на руках сейчас ${stockVal < 0 ? "" : "~"}${jMoney(stockVal).replace(/^\+/, "")} по рынку`)}
+      ${tile("Итог за период", jMoney(result), costs > 0 ? `маржа ${nf0.format(result / costs * 100)}% к затратам` : cash ? "продажи − закупки − расходы" : "деньги + изменение склада", `${result >= 0 ? "pos" : "neg"} big`)}
     </div>`;
     if (slices.length > 1 && cur === "all") {
-      h += `<div class="jr-slw"><table class="jr-slices"><thead><tr><th scope="col">Разрез</th><th scope="col">Закупка</th><th scope="col">Продажи</th><th scope="col">Сборы</th><th scope="col">Станок</th><th scope="col" title="Полуфабрикаты из других разрезов (блоки T6 на переработку T7) — по рынку">Свои полуфабрикаты</th><th scope="col">Склад Δ</th><th scope="col">Итог</th><th scope="col">Маржа</th></tr></thead><tbody>`
-        + slices.map((k) => { const s = r.sl[k], x = r.res(s), c = r.cost(s); return `<tr><th scope="row"><button type="button" class="linkbtn" data-jslice="${k}">${jSliceName(k)}</button></th><td>${jMoney(-s.spent)}</td><td>${jMoney(s.got)}</td><td>${jMoney(-(s.fee + s.est))}</td><td>${jMoney(-s.station)}</td><td>${s.tout || s.tin ? jMoney(s.tout - s.tin) : "—"}</td><td>${jMoney(s.d)}</td><td>${jMoneyB(x)}</td><td>${c > 0 ? `<b style="color:${levelColor(x / c, x, calcSettings().m)}">${nf0.format(x / c * 100)}%</b>` : "—"}</td></tr>`; }).join("")
+      h += `<div class="jr-slw"><table class="jr-slices"><thead><tr><th scope="col">Разрез</th><th scope="col">Закупка</th><th scope="col">Продажи</th><th scope="col">Сборы</th><th scope="col">Станок</th>${cash ? "" : `<th scope="col" title="Полуфабрикаты из других разрезов (блоки T6 на переработку T7) — по рынку">Свои полуфабрикаты</th><th scope="col">Склад Δ</th>`}<th scope="col">Итог</th><th scope="col">Маржа</th></tr></thead><tbody>`
+        + slices.map((k) => { const s = r.sl[k], x = r.res(s), c = r.cost(s); return `<tr><th scope="row"><button type="button" class="linkbtn" data-jslice="${k}">${jSliceName(k)}</button></th><td>${jMoney(-s.spent)}</td><td>${jMoney(s.got)}</td><td>${jMoney(-(s.fee + s.est))}</td><td>${jMoney(-s.station)}</td>${cash ? "" : `<td>${s.tout || s.tin ? jMoney(s.tout - s.tin) : "—"}</td><td>${jMoney(s.d)}</td>`}<td>${jMoneyB(x)}</td><td>${c > 0 ? `<b style="color:${levelColor(x / c, x, calcSettings().m)}">${nf0.format(x / c * 100)}%</b>` : "—"}</td></tr>`; }).join("")
         + `</tbody></table></div>`;
     }
     if (neg.length) {
@@ -2835,11 +2841,13 @@ function renderJ2Report() {
         + `<div class="jr-stl">${neg.sort((a, b) => a.val - b.val).map((x) => `<span class="jr-sti">${jIcon(x.id, 24)}<span>${esc(itemLabel(x.id))}<small>${jTierTxt(x.id)} · −${fmt(-x.q)} шт. × ${fmt(x.v)}</small></span><b>${jMoney(-x.val).replace(/^\+/, "")}</b></span>`).join("")}</div></details>`;
     }
     if (stockOf.some((x) => x.q > 0)) h += `<details class="jr-stock"><summary>На складе по журналу: ${stockOf.filter((x) => x.q > 0).length} ${plural(stockOf.filter((x) => x.q > 0).length, ["предмет", "предмета", "предметов"])}, ~${jMoney(stockOf.filter((x) => x.q > 0).reduce((a, x) => a + x.val, 0)).replace(/^\+/, "")} по рынку</summary><div class="jr-stl">${stockOf.filter((x) => x.q > 0).map((x) => `<span class="jr-sti">${jIcon(x.id, 24)}<span>${esc(itemLabel(x.id))}<small>${jTierTxt(x.id)} · ${fmt(x.q)} шт. × ${fmt(x.v)}</small></span><b>${jMoney(x.val).replace(/^\+/, "")}</b></span>`).join("")}</div></details>`;
-    h += `<p class="dn">Итог = продажи − закупка − сборы − станок + изменение склада по текущим ценам рынка. Сборы, которые не записаны, оцениваются по «Условиям»: 2,5% × (1 + перевыставления ${nf1.format(relists())}). Если у предмета за период есть записанный сбор, оценка для него не добавляется.</p>`;
+    h += cash ? `<p class="dn">Итог = продажи − закупки − сборы − станок. Склад не оценивается, поэтому честная цифра — за весь цикл: от первой закупки партии до продажи последнего блока (выбери «Свои даты»). Ресурс считается одним разрезом на все тиры: блоки T6, ушедшие в T7, не продаются, и по тирам деньги не делятся. Сборы, которые не записаны, оцениваются по «Условиям»: 2,5% × (1 + перевыставления ${nf1.format(relists())}).</p>`
+      : `<p class="dn">Итог = продажи − закупка − сборы − станок + изменение склада по текущим ценам рынка. Режим «Со складом» верен, только если записана вся переработка. Сборы, которые не записаны, оцениваются по «Условиям»: 2,5% × (1 + перевыставления ${nf1.format(relists())}). Если у предмета за период есть записанный сбор, оценка для него не добавляется.</p>`;
   }
   const box = $("jr-report"); box.innerHTML = h;
   chips($("jr-slices"), [["all", "Всё"], ...slices.map((k) => [k, jSliceName(k)])], (v) => v === cur, (v) => { S.j2.slice = v; save(); renderJ2Report(); });
   box.querySelectorAll("[data-jper]").forEach((b) => b.addEventListener("click", () => { S.j2.period = b.dataset.jper; save(); renderJ2Report(); }));
+  box.querySelectorAll("[data-jmode]").forEach((b) => b.addEventListener("click", () => { S.j2.mode = b.dataset.jmode; S.j2.slice = "all"; save(); renderJ2Report(); }));
   box.querySelectorAll("[data-jslice]").forEach((b) => b.addEventListener("click", () => { S.j2.slice = b.dataset.jslice; save(); renderJ2Report(); }));
   const fd = $("jr-from"), td = $("jr-to");
   if (fd) fd.addEventListener("change", () => { S.j2.from = fd.value; save(); renderJ2Report(); });
@@ -2856,6 +2864,7 @@ function jEntryText0(e) {
   if (e.type === "buy") return { t: `${name}${city}`, s: `${e.listed ? `куплено ${fmt(e.qty)} из ${fmt(e.listed)}` : `куплено ${fmt(e.qty)}`} · ${fmt(e.price)} за шт.${e.netQty !== undefined && e.netQty !== e.qty ? ` · из них ${fmt(e.qty - e.netQty)} уже было в «Забрал»` : ""}`, m: -(e.netSpent ?? e.spent), tag: e.derived ? "оценка цены" : "" };
   if (e.type === "take") return { t: `${name}${city}`, s: `забрал ${fmt(e.qty)} из открытого заказа · ${fmt(e.price)} за шт.${e.settled ? " · закрыто письмом" : " · ждёт письма"}`, m: -e.spent, tag: e.settled ? "" : "ждёт письма" };
   if (e.type === "sell") return { t: `${name}${city}`, s: `${e.listed ? `продано ${fmt(e.qty)} из ${fmt(e.listed)}` : `продано ${fmt(e.qty)}`}${e.qty ? ` · ${fmt((e.gross - e.tax) / e.qty)} за шт. после налога` : ""}${e.listed && e.listed > e.qty ? ` · ${fmt(e.listed - e.qty)} вернулось` : ""}`, m: e.gross - e.tax };
+  if (e.type === "fee" && e.kind === "station") return { t: `Станок${e.item ? ": " + name : ""}${city}`, s: "плата за переработку", m: -e.amount };
   if (e.type === "fee") return { t: `Сбор${e.item ? ": " + name : ""}${city}`, s: e.side === "sell" ? "заказ на продажу" : e.side === "buy" ? "заказ на покупку" : "плата за размещение", m: -e.amount };
   const ins = (e.ins || []).filter((x) => x.qty).map((x) => `${fmt(x.qty)} ${lc1(itemLabel(x.item))}`).join(", ");
   return { t: `${e.type === "brew" ? "Сварил" : "Переработал"}: ${fmt(e.qty)} ${lc1(name)}${city}`, s: `ушло ${ins || "—"}${e.focus ? " · с фокусом" : ""}`, m: -(e.station || 0) };
@@ -2871,7 +2880,7 @@ function renderJ2Feed() {
     const d = new Date(e.ts), dk = d.toDateString();
     if (dk !== day) { day = dk; const today = new Date().toDateString(), yest = new Date(Date.now() - 864e5).toDateString(); h += `<div class="jr-day">${dk === today ? "Сегодня" : dk === yest ? "Вчера, " + dShort(e.ts) : dShort(e.ts)}</div>`; }
     const x = jEntryText(e);
-    h += `<div class="jr-e"><span class="jr-t">${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span><span class="jr-k ${e.type}">${JT[e.type]}</span>${e.item ? jIcon(e.item, 30) : "<span></span>"}<span class="jr-d"><b>${x.t}</b><small>${x.s}</small></span>${x.tag ? `<span class="jr-tag">${x.tag}</span>` : `<span class="jr-tag0"></span>`}<span class="jr-m">${jMoneyB(x.m)}</span><button class="jr-x${jDelArm === e.id ? " arm" : ""}" type="button" data-jdel="${e.id}" title="Удалить запись">${jDelArm === e.id ? "Удалить?" : "✕"}</button></div>`;
+    h += `<div class="jr-e"><span class="jr-t">${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span><span class="jr-k ${e.type}">${e.kind === "station" ? "Станок" : JT[e.type]}</span>${e.item ? jIcon(e.item, 30) : "<span></span>"}<span class="jr-d"><b>${x.t}</b><small>${x.s}</small></span>${x.tag ? `<span class="jr-tag">${x.tag}</span>` : `<span class="jr-tag0"></span>`}<span class="jr-m">${jMoneyB(x.m)}</span><button class="jr-x${jDelArm === e.id ? " arm" : ""}" type="button" data-jdel="${e.id}" title="Удалить запись">${jDelArm === e.id ? "Удалить?" : "✕"}</button></div>`;
   }
   if (list.length > jFeedN) h += `<button class="btn ghost" type="button" id="jr-more">Показать ещё ${Math.min(100, list.length - jFeedN)}</button>`;
   box.innerHTML = h;
@@ -2919,9 +2928,13 @@ function renderJ2Form() {
       : `<div class="jr-row3">${inp("jr-q", "Продал")}${inp("jr-y", "из")}${inp("jr-g", "Цена (до налога)")}</div>`;
     if (j.side === "sell") h += inp("jr-tax", "Налог — «налог: …» в письме", "4% от цены");
   } else if (j.tab === "fee") {
-    h += `<label class="field big"><span class="k">Сколько списало</span><input class="in" id="jr-a" inputmode="numeric" autocomplete="off" placeholder="например, 17 199"></label>`
-      + jItemField("jr-item", jF.item, "За что (необязательно)") + `<div class="jr-row2">${segB([["buy", "Заказ на покупку"], ["sell", "Заказ на продажу"]], j.side, "data-jside")}</div>` + city()
-      + `<p class="dn">Число — красное в окне заказа в игре: «… (2.5% Плата за размещение)». Если у предмета за период есть записанные сборы, оценка для него не добавляется.</p>`;
+    const st = j.feeKind === "station";
+    h += `<div class="jr-row2">${segB([["order", "За заказ"], ["station", "Станок"]], st ? "station" : "order", "data-jfk")}</div>`
+      + `<label class="field big"><span class="k">${st ? "Сколько заплатил станку" : "Сколько списало"}</span><input class="in" id="jr-a" inputmode="numeric" autocomplete="off" placeholder="например, 17 199"></label>`
+      + (st ? jItemField("jr-item", jF.item, "Что перерабатывал (необязательно)") + city()
+          + `<p class="dn">Одной суммой за поездку — без разбивки по тирам и зачарованиям. Без предмета запишется на камень.</p>`
+        : jItemField("jr-item", jF.item, "За что (необязательно)") + `<div class="jr-row2">${segB([["buy", "Заказ на покупку"], ["sell", "Заказ на продажу"]], j.side, "data-jside")}</div>` + city()
+          + `<p class="dn">Число — красное в окне заказа в игре: «… (2.5% Плата за размещение)». Если у предмета за период есть записанные сборы, оценка для него не добавляется.</p>`);
   } else if (j.tab === "take") {
     h += `<p class="dn">Когда заказ на покупку ещё открыт, а купленное уже везёшь на переработку. Потом, когда придёт письмо по этому заказу, записанное здесь вычтется.</p>`
       + jItemField("jr-item", jF.item) + city() + `<div class="jr-row3 two">${inp("jr-q", "Забрал, шт.")}${inp("jr-p", "Цена заказа")}</div>`;
@@ -2936,6 +2949,7 @@ function renderJ2Form() {
   for (const [id, v] of Object.entries(keepVals)) { const el = box.querySelector("#" + id); if (el && !el.value) el.value = v; }
   box.querySelectorAll("[data-jtab]").forEach((b) => b.addEventListener("click", () => { j.tab = b.dataset.jtab; save(); renderJ2Form(); }));
   box.querySelectorAll("[data-jside]").forEach((b) => b.addEventListener("click", () => { j.side = b.dataset.jside; save(); renderJ2Form(); }));
+  box.querySelectorAll("[data-jfk]").forEach((b) => b.addEventListener("click", () => { j.feeKind = b.dataset.jfk; save(); renderJ2Form(); }));
   box.querySelectorAll("[data-jdone]").forEach((b) => b.addEventListener("click", () => { j.done = b.dataset.jdone === "1"; save(); renderJ2Form(); }));
   box.querySelectorAll("[data-jfocus]").forEach((b) => b.addEventListener("click", () => { j.focus = b.dataset.jfocus === "1"; save(); jF.ins = null; renderJ2Form(); }));
   box.querySelectorAll("[data-jpw]").forEach((b) => b.addEventListener("click", () => { j.potWhere = b.dataset.jpw; save(); jF.ins = null; renderJ2Form(); }));
@@ -3005,7 +3019,11 @@ function jBuild() {
     const taxIn = jNumv("jr-tax"), tax = taxIn || Math.round(g * (+S.settings.fee >= 0.1 ? 0.08 : 0.04));
     return { type: "sell", item: itemId, city, qty: q, listed: y || undefined, gross: g, tax };
   }
-  if (j.tab === "fee") { const a = jNumv("jr-a"); if (!a) return { err: "Впиши сумму сбора" }; return { type: "fee", amount: a, item: itemId || undefined, city: itemId ? city : undefined, side: j.side }; }
+  if (j.tab === "fee") {
+    const a = jNumv("jr-a"); if (!a) return { err: j.feeKind === "station" ? "Впиши, сколько заплатил станку" : "Впиши сумму сбора" };
+    if (j.feeKind === "station") return { type: "fee", kind: "station", amount: a, item: itemId || undefined, city };
+    return { type: "fee", amount: a, item: itemId || undefined, city: itemId ? city : undefined, side: j.side };
+  }
   if (j.tab === "take") { const q = jNumv("jr-q"), p = jNumv("jr-p"); if (!itemId) return { err: "Выбери предмет" }; if (!q || !p) return { err: "Впиши количество и цену заказа" }; return { type: "take", item: itemId, city, qty: q, price: p, spent: q * p }; }
   const out = jF.out, q = jNumv("jr-oq");
   if (!out || !q) return { err: "Выбери, что получил, и сколько" };
@@ -3046,7 +3064,7 @@ function jSave() {
   if (e.item) jF.city = e.city || jF.city;
   // форму очищаем, предмет и город оставляем — следующее письмо часто про то же
   if (e.type === "refine" || e.type === "brew") { jF.qty = ""; jF.ins = null; }
-  toast(`Записано: ${JT[e.type].toLowerCase()}${e.item ? " — " + itemLabel(e.item) : ""}`);
+  toast(`Записано: ${(e.kind === "station" ? "станок" : JT[e.type].toLowerCase())}${e.item ? " — " + itemLabel(e.item) : ""}`);
   jClear = true; renderJournal();
   const first = $("jr-form").querySelector("input[inputmode=numeric]"); if (first) first.focus();
 }
