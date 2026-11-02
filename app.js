@@ -3232,6 +3232,9 @@ function byMarket(x) {
 }
 function renderBuy() {
   const b = S.buy, box = $("by-in"); if (!box) return;
+  if (!FAM[b.f]) b.f = "stone";
+  // строки, испорченные старой версией (ресурс стал null), чиним, а не падаем
+  for (const x of b.rows) { if (!FAM[x.f]) x.f = b.f; x.t = Math.min(8, Math.max(2, +x.t || 6)); x.e = Math.min(4, Math.max(0, +x.e || 0)); }
   if (!b.rows.length) b.rows.push({ f: b.f, t: 6, e: 0, q: "", p: "" });
   const sel = (cls, i, opts, cur) => `<select class="in ${cls}" data-i="${i}">${opts.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? " selected" : ""}>${l}</option>`).join("")}</select>`;
   let h = `<div class="by-top"><label class="field"><span class="k">Скидка от оценки, %</span><input class="in" id="by-pct" inputmode="decimal" value="${esc(String(b.pct))}"></label>`
@@ -3253,7 +3256,7 @@ function renderBuy() {
   box.innerHTML = h;
   renderBuyOut();
   const upd = (el, k, num) => el.addEventListener(num ? "input" : "change", () => {
-    const x = b.rows[+el.dataset.i]; x[k] = num ? el.value : +el.value; if (k === "f") b.f = el.value; save();
+    const x = b.rows[+el.dataset.i]; x[k] = num || k === "f" ? el.value : +el.value; if (k === "f") b.f = el.value; save();
     if (num) { const s = byNum(x.q) && byNum(x.p) ? byRowSum(x) : 0; el.closest(".by-r").querySelector(".by-s").textContent = s ? fmt(s) : "—"; renderBuyOut(); }
     else { renderBuy(); ensure([byId(x)], { history: true }).then(() => { if (S.view === "buy") renderBuy(); }); }
   });
