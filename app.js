@@ -84,7 +84,7 @@ const S = {
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["j2", "fav", "manual", "favInc", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["j2", "buy", "fav", "manual", "favInc", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -3212,8 +3212,84 @@ function renderAmNote() {
   box.querySelector(".jr-am-x").addEventListener("click", () => { S.j2.amLast = null; save(); box.hidden = true; });
 }
 
+// --- выкуп: количество × оценочная цена из игры − скидка, готовый текст для продавца
+const BY_EN = { stone: "Stone", fiber: "Fiber", ore: "Ore", wood: "Wood", hide: "Hide" };
+S.buy = { pct: 5, f: "stone", rows: [], ...(S.buy && typeof S.buy === "object" ? S.buy : {}) };
+const byNum = (v) => +(String(v ?? "").replace(/[^\d.,]/g, "").replace(",", ".")) || 0;
+const byRowSum = (x) => Math.floor(byNum(x.q) * byNum(x.p) * (1 - byNum(S.buy.pct) / 100));
+const byId = (x) => rawId(x.f, x.t, x.e);
+function byText() {
+  const rows = S.buy.rows.filter((x) => byNum(x.q) && byNum(x.p));
+  if (!rows.length) return "";
+  const many = new Set(rows.map((x) => x.f)).size > 1;
+  const lines = rows.map((x) => `${many ? BY_EN[x.f] + " " : ""}T${x.t}.${x.e} - ${byRowSum(x)} for ${byNum(x.q)} (est ${byNum(x.p)})`);
+  const total = rows.reduce((a, x) => a + byRowSum(x), 0);
+  return lines.join("\n") + `\n\nTotal ${total.toLocaleString("en-US")}.`;
+}
+function byMarket(x) {
+  const id = byId(x), t = typical(id, "sell"); if (t && isFinite(t.med)) return t.med;
+  const p = pickSell(id); return p ? p.price : 0;
+}
+function renderBuy() {
+  const b = S.buy, box = $("by-in"); if (!box) return;
+  if (!b.rows.length) b.rows.push({ f: b.f, t: 6, e: 0, q: "", p: "" });
+  const sel = (cls, i, opts, cur) => `<select class="in ${cls}" data-i="${i}">${opts.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+  let h = `<div class="by-top"><label class="field"><span class="k">Скидка от оценки, %</span><input class="in" id="by-pct" inputmode="decimal" value="${esc(String(b.pct))}"></label>`
+    + `<span class="k by-hint">Строка = кол-во × цена × (1 − ${nf1.format(byNum(b.pct))}%), с округлением вниз</span></div>`
+    + `<div class="by-rows"><div class="by-hd"><span></span><span>Ресурс</span><span>Тир</span><span>Зач.</span><span>Кол-во</span><span>Цена (est)</span><span>Сумма</span><span></span></div>`;
+  b.rows.forEach((x, i) => {
+    const sum = byNum(x.q) && byNum(x.p) ? byRowSum(x) : 0, m = byMarket(x), p = byNum(x.p);
+    const warn = m && p && (p > m * 1.6 || p < m / 1.6);
+    h += `<div class="by-r">${icon(byId(x), 30)}`
+      + sel("by-f", i, FAMS.map((f) => [f, FAM[f].rawRu]), x.f)
+      + sel("by-t", i, [2, 3, 4, 5, 6, 7, 8].map((t) => [t, "T" + t]), x.t)
+      + sel("by-e", i, [0, 1, 2, 3, 4].map((e) => [e, "." + e]), x.e)
+      + `<input class="in by-q" data-i="${i}" inputmode="numeric" placeholder="0" value="${esc(String(x.q))}">`
+      + `<span class="by-pw"><input class="in by-p" data-i="${i}" inputmode="decimal" placeholder="0" value="${esc(String(x.p))}">${m ? `<small class="${warn ? "warn" : ""}" title="Средняя цена на рынке по AODP — для проверки на опечатку">рынок ≈ ${fmt(m)}</small>` : ""}</span>`
+      + `<b class="by-s">${sum ? fmt(sum) : "—"}</b>`
+      + `<button type="button" class="jr-x" data-bydel="${i}" title="Убрать строку">✕</button></div>`;
+  });
+  h += `</div><div class="by-act"><button type="button" class="btn ghost" id="by-add">+ строка</button><button type="button" class="btn ghost" id="by-clear">Очистить</button></div>`;
+  box.innerHTML = h;
+  renderBuyOut();
+  const upd = (el, k, num) => el.addEventListener(num ? "input" : "change", () => {
+    const x = b.rows[+el.dataset.i]; x[k] = num ? el.value : +el.value; if (k === "f") b.f = el.value; save();
+    if (num) { const s = byNum(x.q) && byNum(x.p) ? byRowSum(x) : 0; el.closest(".by-r").querySelector(".by-s").textContent = s ? fmt(s) : "—"; renderBuyOut(); }
+    else { renderBuy(); ensure([byId(x)], { history: true }).then(() => { if (S.view === "buy") renderBuy(); }); }
+  });
+  box.querySelectorAll(".by-f").forEach((el) => upd(el, "f")); box.querySelectorAll(".by-t").forEach((el) => upd(el, "t")); box.querySelectorAll(".by-e").forEach((el) => upd(el, "e"));
+  box.querySelectorAll(".by-q").forEach((el) => upd(el, "q", true)); box.querySelectorAll(".by-p").forEach((el) => upd(el, "p", true));
+  // Enter в цене — новая строка с тем же ресурсом и тиром
+  box.querySelectorAll(".by-p").forEach((el) => el.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return; e.preventDefault();
+    const i = +el.dataset.i;
+    if (i === b.rows.length - 1) { const x = b.rows[i]; b.rows.push({ f: x.f, t: x.t, e: Math.min(4, x.e + 1), q: "", p: "" }); save(); renderBuy(); }
+    const nx = box.querySelector(`.by-q[data-i="${i + 1}"]`); if (nx) nx.focus();
+  }));
+  box.querySelectorAll("[data-bydel]").forEach((el) => el.addEventListener("click", () => { b.rows.splice(+el.dataset.bydel, 1); save(); renderBuy(); }));
+  $("by-add").addEventListener("click", () => { const x = b.rows[b.rows.length - 1] || { f: b.f, t: 6, e: -1 }; b.rows.push({ f: x.f, t: x.t, e: Math.min(4, x.e + 1), q: "", p: "" }); save(); renderBuy(); const q = box.querySelector(`.by-q[data-i="${b.rows.length - 1}"]`); if (q) q.focus(); });
+  $("by-clear").addEventListener("click", () => { b.rows = []; save(); renderBuy(); });
+  $("by-pct").addEventListener("input", (e) => { b.pct = e.target.value; save(); box.querySelectorAll(".by-r").forEach((r, i) => { const x = b.rows[i], s = byNum(x.q) && byNum(x.p) ? byRowSum(x) : 0; r.querySelector(".by-s").textContent = s ? fmt(s) : "—"; }); box.querySelector(".by-hint").textContent = `Строка = кол-во × цена × (1 − ${nf1.format(byNum(b.pct))}%), с округлением вниз`; renderBuyOut(); });
+}
+function renderBuyOut() {
+  const box = $("by-out"); if (!box) return;
+  const t = byText(), rows = S.buy.rows.filter((x) => byNum(x.q) && byNum(x.p));
+  const total = rows.reduce((a, x) => a + byRowSum(x), 0), full = rows.reduce((a, x) => a + byNum(x.q) * byNum(x.p), 0);
+  box.innerHTML = `<div class="w-head"><span class="k">Текст для продавца</span></div>`
+    + (t ? `<pre class="by-txt" id="by-txt">${esc(t)}</pre><div class="by-tot"><span class="k">Итого</span><b>${fmt(total)}</b><small>по оценке ${fmt(full)} · скидка ${fmt(full - total)}</small></div><button type="button" class="btn primary block" id="by-copy">Скопировать</button>`
+      : `<p class="w-empty">Впиши количество и цену хотя бы в одной строке.</p>`);
+  const c = $("by-copy");
+  if (c) c.addEventListener("click", async () => { try { await navigator.clipboard.writeText(t); toast("Скопировано"); } catch (e) { window.prompt("Скопируй текст:", t); } });
+}
+async function openBuy() {
+  renderBuy();
+  const ids = [...new Set(S.buy.rows.map(byId))]; if (!ids.length) return;
+  await ensure(ids, { history: true });
+  if (S.view === "buy") renderBuy();
+}
+
 // дополнительные вкладки включаются в «Условиях»
-const OPT_VIEWS = ["pot", "fish", "fav"];
+const OPT_VIEWS = ["pot", "fish", "fav", "buy"];
 const viewOn = (v) => !OPT_VIEWS.includes(v) || !!(S.settings.tabs || {})[v];
 function applyTabs() {
   for (const v of OPT_VIEWS) {
@@ -3225,7 +3301,7 @@ function applyTabs() {
   const tb = document.querySelector(".tabbar"); tb.style.setProperty("--tabs", n); tb.classList.toggle("many", n >= 6); fitBar();
 }
 
-const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "journal"];
+const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "buy", "journal"];
 function route() {
   const h = location.hash.replace("#", "");
   const ok = (v) => VIEWS.includes(v) && viewOn(v);
@@ -3245,6 +3321,7 @@ function route() {
   if (S.view === "fish") openFish();
   if (S.view === "pot") openPot();
   if (S.view === "fav") openFav();
+  if (S.view === "buy") openBuy();
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.view; }));
 window.addEventListener("hashchange", route);
