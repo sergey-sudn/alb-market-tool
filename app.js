@@ -1327,7 +1327,7 @@ function whereSell(r) {
   const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
   const liq = liquidity(r.sell.vol);
   return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<button type="button" class="dl ws${c === r.sell.city ? " on" : ""}" data-pick="sellCity" data-v="${esc(c)}" aria-pressed="${c === r.sell.city}" title="Считать продажу в ${esc(c)}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></button>`).join("")}
-    <p class="dn">Город · продаётся в день · цена · прибыль с 1 шт. Нажми на город, чтобы считать продажу там. Цена за вычетом уценки ${fmtPct(r.c.buf)} и ${relists() ? "налога со сборами" : "налога"} ${fmtPct(r.c.fee)}</p>
+    <p class="dn">Город · продаётся в день · возраст цены · цена · прибыль с 1 шт. Нажми на город, чтобы считать продажу там. Цена за вычетом уценки ${fmtPct(r.c.buf)} и ${relists() ? "налога со сборами" : "налога"} ${fmtPct(r.c.fee)}</p>
     <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
 }
 // закупочный лист на N стаков на выходе
@@ -2184,7 +2184,7 @@ function potDet(r) {
   const sells = sellCities().map((cc) => ({ c: cc, o: sellIn(r.id, cc) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - c.buf) * (1 - c.fee) - r.cost, liq = liquidity(r.sell.vol);
   const totVol = sells.reduce((a, x) => a + (isFinite(x.o.vol) ? x.o.vol : 0), 0);
-  h += `<div class="det-b"><h4>Продажа ${hint(`Город · продаётся в день · цена · прибыль с 1 шт. Всего по городам ~${nf0.format(totVol)} в день. Цена за вычетом уценки ${fmtPct(c.buf)} и налога ${fmtPct(c.fee)}.`)}</h4>${sells.map(({ c: cc, o }) => `<div class="dl ws${cc === r.sell.city ? " on" : ""}">${cityBadge(cc)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
+  h += `<div class="det-b"><h4>Продажа ${hint(`Город · продаётся в день · возраст цены · цена · прибыль с 1 шт. Всего по городам ~${nf0.format(totVol)} в день. Цена за вычетом уценки ${fmtPct(c.buf)} и налога ${fmtPct(c.fee)}.`)}</h4>${sells.map(({ c: cc, o }) => `<div class="dl ws${cc === r.sell.city ? " on" : ""}">${cityBadge(cc)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}${srcAge(o) ? ` · <span class="ws-age${o.age !== undefined && isFreshH(o.age) ? " fresh" : ""}${o.age > 24 ? " old" : ""}" title="${o.age !== undefined ? `цена видена ${esc(fmtAge(o.age))} назад` : "источник цены"}">${esc(srcAge(o))}</span>` : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
     <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
   // деньги
   const cls = r.profit >= 0 ? "pos" : "neg", rare = r.ing.some((x) => isRareAlch(x.id));

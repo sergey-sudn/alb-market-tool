@@ -920,3 +920,4 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
   .by-r>.ic{grid-area:ic}.by-r .by-f{grid-area:f}.by-r .by-t{grid-area:t}.by-r .by-e{grid-area:e}.by-r .jr-x{grid-area:x}
   .by-r .by-q{grid-area:q}.by-r .by-pw{grid-area:p}.by-r .by-s{grid-area:s;text-align:left}
 }
+.ws-v .ws-age{white-space:nowrap}.ws-v .ws-age.fresh{color:var(--ink);font-weight:600}.ws-v .ws-age.old{color:var(--warn,#e0b341)}
