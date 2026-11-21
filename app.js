@@ -78,13 +78,13 @@ const S = {
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1, potTop: "margin", potFav: false,
   // избранное и цены, введённые вручную: manual["сервер|id"][город] = { s: [цена лота, время], b: [цена ордера, время] }
-  fav: [], manual: {}, favInc: "ask", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false,
+  fav: [], manual: {}, favInc: "ask", favSide: "both", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false,
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["j2", "buy", "fav", "manual", "favInc", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["j2", "buy", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -2458,6 +2458,9 @@ const FRESH_H = 4;
 // поле ввода цены: своя цена (жёлтая рамка) или серым — цена с сервера
 // свежая — показанный возраст не больше FRESH_H часов («4 ч» ещё свежая)
 const isFreshH = (h) => isFinite(h) && Math.round(h) <= FRESH_H;
+// какие стороны цен показывать в «Избранном»: обе, только «продают» или только «покупают»
+const favSides = () => (S.favSide === "s" ? ["sell"] : S.favSide === "b" ? ["buy"] : ["sell", "buy"]);
+const FAV_TAG = { sell: `<span class="ptag s">продают</span>`, buy: `<span class="ptag b">покупают</span>` };
 // лучшие цены строки — как на «Ценах»: в «продают» и «покупают» по городам из «Условий»
 function favBest(id, cities) {
   const { q, bestS, bestB } = cityQuotes(id, cities), out = { s: null, b: null };
@@ -2484,7 +2487,7 @@ function favInput(id, c, side, ord, compact = false, best = false) {
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
 // У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта
 function favEditor(id, pots, mob = false) {
-  const cities = activeCities(), rec = potRecipe(id);
+  const cities = activeCities(), rec = potRecipe(id), sds = favSides();
   const items = rec ? [[id, 0], ...rec[3]] : [[id, 0]];
   const { side, hasMan } = favSide(id, pots, items);
   const tip = `«Продают» — самая низкая цена во вкладке «Заказы на продажу» (за столько можно купить сразу). «Покупают» — самая высокая цена во вкладке «Заказы на покупку» (за столько можно продать сразу). Вписывай то, что видишь на рынке в игре. Пустое поле — берём цену с сервера (серым). Твоя цена живёт столько же, сколько остальные (${maxAge()} ч, «Условия» → свежесть), и уступает место цене с сервера, если та новее.${rec ? " Enter переходит по городам: сначала все поля одного города, потом следующего." : ""}`;
@@ -2492,17 +2495,18 @@ function favEditor(id, pots, mob = false) {
   const itemName = ([i, n], k) => `<span class="fav-iname">${fishIcon(i, 24)}<span><b>${esc(itemLabel(i))}</b>${k ? `<small>×${n}${isRareAlch(i) ? " · редкий" : ""}</small>` : `<small>зелье</small>`}</span>${k ? favBtn(i, true) : ""}</span>`;
   let grid;
   if (!rec) {
-    grid = `<table class="fav-t"><thead><tr><th scope="col"></th><th scope="col"><span class="ptag s">продают</span><small>самая низкая цена в заказах на продажу</small></th><th scope="col"><span class="ptag b">покупают</span><small>самая высокая цена в заказах на покупку</small></th></tr></thead>
-      <tbody>${cities.map((c, ci) => `<tr><th scope="row">${cityBadge(c)}<span class="fav-cn">${esc(c)}</span></th><td>${favInput(id, c, "sell", ci * 2)}</td><td>${favInput(id, c, "buy", ci * 2 + 1)}</td></tr>`).join("")}</tbody></table>`;
+    const sub = { sell: "самая низкая цена в заказах на продажу", buy: "самая высокая цена в заказах на покупку" };
+    grid = `<table class="fav-t"><thead><tr><th scope="col"></th>${sds.map((sd) => `<th scope="col">${FAV_TAG[sd]}<small>${sub[sd]}</small></th>`).join("")}</tr></thead>
+      <tbody>${cities.map((c, ci) => `<tr><th scope="row">${cityBadge(c)}<span class="fav-cn">${esc(c)}</span></th>${sds.map((sd) => `<td>${favInput(id, c, sd, ci * 2 + (sd === "buy" ? 1 : 0))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   } else if (mob) {
     // телефон: по блоку на город, внутри — зелье и ингредиенты
-    grid = cities.map((c, ci) => `<div class="fav-cityb"><div class="fav-cityh">${cityBadge(c)}<span>${esc(c)}</span><span class="fav-tags"><span class="ptag s">продают</span><span class="ptag b">покупают</span></span></div>`
-      + items.map((it, k) => `<div class="fav-irow">${itemName(it, k)}<div class="fav-pair"><div>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true)}</div><div>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true)}</div></div></div>`).join("") + `</div>`).join("");
+    grid = cities.map((c, ci) => `<div class="fav-cityb"><div class="fav-cityh">${cityBadge(c)}<span>${esc(c)}</span><span class="fav-tags">${sds.map((sd) => FAV_TAG[sd]).join("")}</span></div>`
+      + items.map((it, k) => `<div class="fav-irow">${itemName(it, k)}<div class="fav-pair${sds.length < 2 ? " one" : ""}">${sds.map((sd) => `<div>${favInput(it[0], c, sd, ci * 1000 + k * 2 + (sd === "buy" ? 1 : 0), true)}</div>`).join("")}</div></div>`).join("") + `</div>`).join("");
   } else {
     // ноутбук: строки — зелье и ингредиенты, столбцы — города (лот и ордер)
-    grid = `<div class="fav-mxw"><table class="fav-mx"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="2">${cityBadge(c)}</th>`).join("")}</tr>
-      <tr>${cities.map(() => `<th scope="col"><span class="ptag s">продают</span></th><th scope="col"><span class="ptag b">покупают</span></th>`).join("")}</tr></thead>
-      <tbody>${items.map((it, k) => { const bst = favBest(it[0], cities); return `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => `<td>${favInput(it[0], c, "sell", ci * 1000 + k * 2, true, bst.s === c)}</td><td>${favInput(it[0], c, "buy", ci * 1000 + k * 2 + 1, true, bst.b === c)}</td>`).join("")}</tr>`; }).join("")}</tbody></table></div>`;
+    grid = `<div class="fav-mxw"><table class="fav-mx"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="${sds.length}">${cityBadge(c)}</th>`).join("")}</tr>
+      <tr>${cities.map(() => sds.map((sd) => `<th scope="col">${FAV_TAG[sd]}</th>`).join("")).join("")}</tr></thead>
+      <tbody>${items.map((it, k) => { const bst = favBest(it[0], cities); return `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => sds.map((sd) => `<td>${favInput(it[0], c, sd, ci * 1000 + k * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c)}</td>`).join("")).join("")}</tr>`; }).join("")}</tbody></table></div>`;
   }
   return `<div class="fav-ed${rec ? " pot" : ""}" data-items="${esc(JSON.stringify(items.map((x) => x[0])))}"><div class="det-b fav-grid"><h4>${rec ? "Цены зелья и ингредиентов" : "Цены по городам"} <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>${grid}${act}</div><div class="fav-side">${side}</div></div>`;
 }
@@ -2564,6 +2568,7 @@ function renderFav() {
   const allT = S.favTiers.length === ALL_TIERS.length;
   const seg = (items, cur, attr) => `<span class="seg">${items.map(([v, l]) => `<button type="button" ${attr}="${v}" aria-pressed="${cur === v}">${l}</button>`).join("")}</span>`;
   $("fav-ctrl").innerHTML = `<span class="fsum">Вид</span><span class="chips" id="fav-kinds"></span><span class="fsum">Тир</span><span class="chips tier-chips" id="fav-tiers"></span>`
+    + `<span class="fav-sidef"><span class="fsum" title="«Продают» — самая низкая цена в заказах на продажу: за столько можно купить сразу. «Покупают» — самая высокая цена в заказах на покупку: за столько можно продать сразу">Цены</span>${seg([["both", "обе"], ["s", "продают"], ["b", "покупают"]], S.favSide || "both", "data-fside")}</span>`
     + `<label class="switch"><input type="checkbox" id="fav-man"${S.favMan ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только с ручными ценами</span></label>`
     + `<span class="fav-inc"><span class="fsum">Ингредиенты с зельем</span>${seg([["ask", "спрашивать"], ["yes", "добавлять"], ["no", "не добавлять"]], S.favInc, "data-finc")}</span>`;
   chips($("fav-kinds"), [["all", "Все"], ...FAV_KINDS.map(([k, l]) => [k, k === "ing" ? "Ингредиенты" : l])], (v) => v === S.favKind, (v) => { S.favKind = v; save(); renderFav(); });
@@ -2571,11 +2576,12 @@ function renderFav() {
     (v) => { S.favTiers = v === "all" ? [...ALL_TIERS] : allT ? [v] : toggleIn(S.favTiers, v, ALL_TIERS); save(); renderFav(); }, (v) => (v === "all" ? "" : tierCls(v)));
   $("fav-man").addEventListener("change", (e) => { S.favMan = e.target.checked; save(); renderFav(); });
   $("fav-ctrl").querySelectorAll("[data-finc]").forEach((b) => b.addEventListener("click", () => { S.favInc = b.dataset.finc; save(); renderFav(); }));
+  $("fav-ctrl").querySelectorAll("[data-fside]").forEach((b) => b.addEventListener("click", () => { S.favSide = b.dataset.fside; save(); renderFav(); }));
 
-  const tbl = $("fav-table"), cards = $("fav-cards"), cities = activeCities(), NC = cities.length * 2 + 2;
+  const sds = favSides(), tbl = $("fav-table"), cards = $("fav-cards"), cities = activeCities(), NC = cities.length * sds.length + 2;
   // в строке — сразу поля цен по городам: проходишь список и вписываешь; маржа и «используется в» — в деталях
-  const head = `<thead><tr><th scope="col" rowspan="2">Ресурс</th>${cities.map((c) => `<th scope="colgroup" colspan="2" class="fav-ch fav-cityname">${cityHtml(c)}</th>`).join("")}<th scope="col" rowspan="2">Маржа</th></tr>`
-    + `<tr class="fav-sub">${cities.map(() => `<th scope="col" class="fav-ch"><span class="ptag s">продают</span></th><th scope="col"><span class="ptag b">покупают</span></th>`).join("")}</tr></thead>`;
+  const head = `<thead><tr><th scope="col" rowspan="2">Ресурс</th>${cities.map((c) => `<th scope="colgroup" colspan="${sds.length}" class="fav-ch fav-cityname">${cityHtml(c)}</th>`).join("")}<th scope="col" rowspan="2">Маржа</th></tr>`
+    + `<tr class="fav-sub">${cities.map(() => sds.map((sd, j) => `<th scope="col"${j ? "" : ' class="fav-ch"'}>${FAV_TAG[sd]}</th>`).join("")).join("")}</tr></thead>`;
   if (!S.fav.length) {
     const msg = `Пока пусто. Нажми звёздочку у ресурса на страницах «Цены», «Переработка», «Зелья» или «Рыба» — он появится здесь.`;
     tbl.innerHTML = head + `<tbody><tr><td class="msg" colspan="${NC}">${msg}</td></tr></tbody>`; cards.innerHTML = `<div class="panel card"><span class="k">${msg}</span></div>`;
@@ -2596,7 +2602,7 @@ function renderFav() {
       const ic = parseId(r.id) ? icon(r.id, 36) : fishIcon(r.id, 36);
       const mg = r.k === "ing" ? `<span class="empty" title="Своей маржи нет — смотри зелья в деталях">—</span>` : isFinite(r.m) ? `<b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b>` : `<span class="empty">—</span>`;
       h += `<tr class="rrow fav-row${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item"><button type="button" class="fav-tg" aria-label="Подробнее" aria-expanded="${open}">${CHEV}</button>${ic}<div class="iname"><button type="button" class="fav-copy" data-copy="${esc(itemLabel(r.id))}" title="Скопировать название — чтобы вставить в поиск на рынке">${esc(itemLabel(r.id))}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button></div>${favBtn(r.id)}</div></td>`
-        + ((bst) => cities.map((c, ci) => `<td class="fav-c" style="--cc:${CITY_COLOR[c]}">${favInput(r.id, c, "sell", ci * 100000 + rowN * 2, true, bst.s === c)}</td><td class="fav-c2">${favInput(r.id, c, "buy", ci * 100000 + rowN * 2 + 1, true, bst.b === c)}</td>`).join(""))(favBest(r.id, cities))
+        + ((bst) => cities.map((c, ci) => sds.map((sd, j) => `<td class="${j ? "fav-c2" : "fav-c"}"${j ? "" : ` style="--cc:${CITY_COLOR[c]}"`}>${favInput(r.id, c, sd, ci * 100000 + rowN * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c)}</td>`).join("")).join(""))(favBest(r.id, cities))
         + `<td>${mg}</td></tr>`
         + `<tr class="det"${open ? "" : " hidden"}><td colspan="${NC}"><div data-fdet="${esc(r.id)}">${open ? favDetail(r, pots) : ""}</div></td></tr>`;
       rowN++;
