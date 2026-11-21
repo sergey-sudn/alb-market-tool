@@ -2504,7 +2504,7 @@ function favEditor(id, pots, mob = false) {
       + items.map((it, k) => `<div class="fav-irow">${itemName(it, k)}<div class="fav-pair${sds.length < 2 ? " one" : ""}">${sds.map((sd) => `<div>${favInput(it[0], c, sd, ci * 1000 + k * 2 + (sd === "buy" ? 1 : 0), true)}</div>`).join("")}</div></div>`).join("") + `</div>`).join("");
   } else {
     // ноутбук: строки — зелье и ингредиенты, столбцы — города (лот и ордер)
-    grid = `<div class="fav-mxw"><table class="fav-mx"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="${sds.length}">${cityBadge(c)}</th>`).join("")}</tr>
+    grid = `<div class="fav-mxw"><table class="fav-mx${sds.length === 1 ? " fav-one" : ""}"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="${sds.length}">${cityBadge(c)}</th>`).join("")}</tr>
       <tr>${cities.map(() => sds.map((sd) => `<th scope="col">${FAV_TAG[sd]}</th>`).join("")).join("")}</tr></thead>
       <tbody>${items.map((it, k) => { const bst = favBest(it[0], cities); return `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => sds.map((sd) => `<td>${favInput(it[0], c, sd, ci * 1000 + k * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c)}</td>`).join("")).join("")}</tr>`; }).join("")}</tbody></table></div>`;
   }
@@ -2614,6 +2614,7 @@ function renderFav() {
     }
   }
   tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
+  tbl.classList.toggle("fav-one", sds.length === 1); // одна сторона — цена и возраст в одну строку
   favFit();
   const toggle = (el) => {
     const key = el.dataset.key, open = !favOpen.has(key);

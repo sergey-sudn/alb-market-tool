@@ -922,3 +922,7 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 }
 .ws-v .ws-age{white-space:nowrap}.ws-v .ws-age.fresh{color:var(--ink);font-weight:600}.ws-v .ws-age.old{color:var(--warn,#e0b341)}
 .fav-pair.one .fav-in.sm{width:120px}.fav-sidef{display:inline-flex;align-items:center;gap:8px}
+/* избранное, одна сторона цен: поле и возраст в одну строку */
+.fav-one td{white-space:nowrap}
+.fav-one .fav-in.sm{display:inline-flex;vertical-align:middle}
+.fav-one .fav-in.sm+.fav-src{display:inline-block;vertical-align:middle;margin:0 0 0 6px;padding:0;text-align:left}
