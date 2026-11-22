@@ -84,7 +84,7 @@ const S = {
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["j2", "buy", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["j2", "buy", "bm", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -1991,7 +1991,7 @@ function bindSettings() {
   $("open-settings").addEventListener("click", () => { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", ""); });
   dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
-  document.querySelectorAll("[data-reload]").forEach((b) => b.addEventListener("click", () => ({ prices: openPrices, fish: openFish, pot: openPot, fav: openFav }[b.dataset.reload] || openRefine)(true)));
+  document.querySelectorAll("[data-reload]").forEach((b) => b.addEventListener("click", () => ({ prices: openPrices, fish: openFish, pot: openPot, fav: openFav, bm: openBm }[b.dataset.reload] || openRefine)(true)));
   document.querySelectorAll("[data-open-sheet]").forEach((b) => b.addEventListener("click", () => openSheet(b.dataset.openSheet)));
   document.querySelectorAll("[data-close-sheet]").forEach((b) => b.addEventListener("click", closeSheet));
   $("scrim").addEventListener("click", closeSheet);
@@ -3298,8 +3298,144 @@ async function openBuy() {
   if (S.view === "buy") renderBuy();
 }
 
+// --- Чёрный рынок: перепродажа. Купить вещь «в кнопку» в городе и сдать в заказ Чёрного рынка (Карлеон).
+// Данные — отдельный кэш: позиций тысячи, у каждой 5 качеств, обычный кэш сайта под это не рассчитан
+const BM_Q = ["", "обычное", "хорошее", "выдающееся", "превосходное", "шедевр"];
+const BM_SECS = ["Оружие", "Броня", "Левая рука", "Сумки и плащи"];
+S.bm = { sec: "Броня", groups: ["Кожаная броня"], tiers: [6, 7, 8], enchs: [0, 1, 2], from: ["Brecilien", "Caerleon"], age: 6, minP: 5000, ...(S.bm && typeof S.bm === "object" ? S.bm : {}) };
+let bmData = {}, bmHist = {}, bmAt = 0, bmKey = "", bmBusy = false;
+const bmGroups = (sec) => [...new Set(BM_CAT.filter((c) => c[3] === sec).map((c) => c[2]))];
+const bmName = (id) => { const m = /^T(\d)_(.+?)(?:@(\d))?$/.exec(id), c = m && BM_CAT.find((x) => x[0] === m[2]); return c ? c[1] : id; };
+const bmTE = (id) => { const m = /^T(\d)_.+?(?:@(\d))?$/.exec(id); return m ? `T${m[1]}.${m[2] || 0}` : ""; };
+const bmIcon = (id, q, sz = 40) => `<img class="bm-ic" width="${sz}" height="${sz}" loading="lazy" alt="" src="https://render.albiononline.com/v1/item/${encodeURIComponent(id)}.png?size=64&quality=${q || 1}">`;
+const bmTax = () => (+S.settings.fee >= 0.1 ? 0.08 : 0.04);
+function bmIds() {
+  const b = S.bm, out = [];
+  for (const c of BM_CAT) if (b.groups.includes(c[2])) for (const t of c[4]) if (b.tiers.includes(t)) for (const e of b.enchs) out.push(`T${t}_${c[0]}${e ? "@" + e : ""}`);
+  return out;
+}
+async function bmLoad(force) {
+  const ids = bmIds(), key = S.settings.server + "|" + ids.join(",");
+  if (!ids.length) { bmData = {}; renderBm(); return; }
+  if (!force && key === bmKey && Date.now() - bmAt < 10 * 6e4) { renderBm(); return; }
+  if (bmBusy) return; bmBusy = true;
+  const box = $("bm-table"), cards = $("bm-cards"), locs = encodeURIComponent(["Black Market", ...CITIES].join(","));
+  const data = {}; let done = 0;
+  const msg = (t) => { if (box) box.innerHTML = `<tbody><tr><td class="msg">${t}</td></tr></tbody>`; if (cards) cards.innerHTML = `<div class="panel card"><span class="k">${t}</span></div>`; };
+  try {
+    for (let i = 0; i < ids.length; i += 60) {
+      msg(`Загружаю цены: ${fmt(Math.min(ids.length, done))} из ${fmt(ids.length)} позиций…`);
+      const part = ids.slice(i, i + 60);
+      const r = await fetch(`${base()}/api/v2/stats/prices/${part.join(",")}.json?locations=${locs}`).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); });
+      for (const x of r) (data[x.item_id] = data[x.item_id] || []).push(x);
+      done += part.length;
+    }
+    bmData = data; bmAt = Date.now(); bmKey = key; bmHist = {};
+  } catch (e) { bmBusy = false; msg("Не удалось загрузить цены — сервер данных не ответил. Попробуй «Обновить» через минуту."); return; }
+  bmBusy = false; renderBm();
+}
+function bmRows() {
+  const b = S.bm, now = Date.now(), A = +b.age || 6, tax = bmTax(), out = [];
+  const age = (d) => (!d || d.startsWith("0001") ? Infinity : (now - Date.parse(d + "Z")) / 36e5);
+  for (const [id, arr] of Object.entries(bmData)) {
+    for (const o of arr) {
+      if (o.city !== "Black Market" || !(o.buy_price_max > 0)) continue;
+      const aB = age(o.buy_price_max_date); if (aB > A) continue;
+      let best = null;
+      for (const x of arr) {
+        if (x.city === "Black Market" || !b.from.includes(x.city) || !(x.sell_price_min > 0) || x.quality < o.quality) continue;
+        const aS = age(x.sell_price_min_date); if (aS > A) continue;
+        if (!best || x.sell_price_min < best.p) best = { p: x.sell_price_min, c: x.city, q: x.quality, a: aS };
+      }
+      if (!best) continue;
+      const profit = o.buy_price_max * (1 - tax) - best.p;
+      if (profit < (+b.minP || 0)) continue;
+      out.push({ id, q: o.quality, bm: o.buy_price_max, aB, buy: best, profit, pct: profit / best.p });
+    }
+  }
+  return out.sort((x, y) => y.profit - x.profit);
+}
+async function bmLoadHist(rows) {
+  const need = [...new Set(rows.slice(0, 80).map((r) => r.id))].filter((id) => !bmHist[id]);
+  if (!need.length) return;
+  const now = Date.now();
+  for (let i = 0; i < need.length; i += 40) {
+    const part = need.slice(i, i + 40);
+    try {
+      const r = await fetch(`${base()}/api/v2/stats/history/${part.join(",")}.json?locations=Black%20Market&time-scale=24`).then((x) => x.json());
+      for (const id of part) bmHist[id] = {};
+      for (const x of r) {
+        const L = x.data.filter((q) => { const a = now - Date.parse(q.timestamp + "Z"); return a > 864e5 && a < 8 * 864e5; });
+        bmHist[x.item_id][x.quality] = L.reduce((a, q) => a + q.item_count, 0) / 7;
+      }
+    } catch (e) { for (const id of part) bmHist[id] = bmHist[id] || {}; }
+  }
+  if (S.view === "bm") renderBm(true);
+}
+function renderBmCtrl() {
+  const b = S.bm, box = $("bm-ctrl"); if (!box) return;
+  const seg = (items, cur, attr) => `<span class="seg">${items.map(([v, l]) => `<button type="button" ${attr}="${v}" aria-pressed="${String(cur) === String(v)}">${l}</button>`).join("")}</span>`;
+  box.innerHTML = `<div class="bm-f"><span class="fsum">Раздел</span>${seg(BM_SECS.map((x) => [x, x]), b.sec, "data-bsec")}</div>`
+    + `<div class="bm-f"><span class="fsum">Группы</span><span class="chips" id="bm-groups"></span></div>`
+    + (b.groups.some((g) => !bmGroups(b.sec).includes(g)) ? `<div class="bm-f bm-other"><span class="fsum">Ещё выбрано</span>${b.groups.filter((g) => !bmGroups(b.sec).includes(g)).map((g) => `<button type="button" class="bm-x" data-bgx="${esc(g)}" title="Убрать">${esc(g)} ✕</button>`).join("")}</div>` : "")
+    + `<div class="bm-f"><span class="fsum">Тир</span><span class="chips tier-chips" id="bm-tiers"></span><span class="fsum">Зачарование</span><span class="chips" id="bm-enchs"></span></div>`
+    + `<div class="bm-f"><span class="fsum">Покупаю в</span><span class="chips" id="bm-from"></span></div>`
+    + `<div class="bm-f"><span class="fsum" title="Обе цены — и в городе, и у Чёрного рынка — не старше этого">Цены не старше</span>${seg([[2, "2 ч"], [4, "4 ч"], [6, "6 ч"], [12, "12 ч"], [24, "сутки"]], b.age, "data-bage")}`
+    + `<label class="bm-min"><span class="fsum">Прибыль от</span><input class="in" id="bm-minp" inputmode="numeric" value="${fmt(+b.minP || 0)}"></label>`
+    + `<button class="btn" type="button" id="bm-go">Загрузить</button></div>`;
+  const grs = bmGroups(b.sec);
+  chips($("bm-groups"), grs.map((g) => [g, g]), (v) => b.groups.includes(v), (v) => { b.groups = b.groups.includes(v) ? b.groups.filter((x) => x !== v) : [...b.groups, v]; save(); renderBmCtrl(); });
+  chips($("bm-tiers"), [4, 5, 6, 7, 8].map((t) => [t, "T" + t]), (v) => b.tiers.includes(v), (v) => { b.tiers = toggleIn(b.tiers, v, [4, 5, 6, 7, 8]); save(); renderBmCtrl(); }, (v) => tierCls(v));
+  chips($("bm-enchs"), [0, 1, 2, 3, 4].map((e) => [e, "." + e]), (v) => b.enchs.includes(v), (v) => { b.enchs = toggleIn(b.enchs, v, [0, 1, 2, 3, 4]); save(); renderBmCtrl(); });
+  chips($("bm-from"), CITIES.map((c) => [c, c]), (v) => b.from.includes(v), (v) => { b.from = toggleIn(b.from, v, CITIES); save(); renderBmCtrl(); renderBm(); });
+  box.querySelectorAll("[data-bgx]").forEach((x) => x.addEventListener("click", () => { b.groups = b.groups.filter((g) => g !== x.dataset.bgx); save(); renderBmCtrl(); }));
+  box.querySelectorAll("[data-bsec]").forEach((x) => x.addEventListener("click", () => { b.sec = x.dataset.bsec; save(); renderBmCtrl(); }));
+  box.querySelectorAll("[data-bage]").forEach((x) => x.addEventListener("click", () => { b.age = +x.dataset.bage; save(); renderBmCtrl(); renderBm(); }));
+  $("bm-minp").addEventListener("change", (e) => { b.minP = +e.target.value.replace(/[^\d]/g, "") || 0; save(); renderBmCtrl(); renderBm(); });
+  $("bm-go").addEventListener("click", () => bmLoad(true));
+  const n = bmIds().length, sel = b.groups.length;
+  $("bm-go").textContent = n ? `Загрузить · ${fmt(n)} поз.` : "Выбери группы";
+  $("bm-go").disabled = !n;
+  // выбор поменялся, а цены ещё по старому — подсвечиваем кнопку
+  const stale = n && S.settings.server + "|" + bmIds().join(",") !== bmKey;
+  $("bm-go").classList.toggle("primary", !!stale);
+  if (sel === 0) $("bm-go").title = "Выбери хотя бы одну группу";
+}
+function renderBm(fromHist = false) {
+  const tbl = $("bm-table"), cards = $("bm-cards"); if (!tbl) return;
+  if (!Object.keys(bmData).length) {
+    const t = "Выбери группы, тиры и зачарования и нажми «Загрузить». Одна группа на T6–T8 .0–.2 — это около сотни позиций, грузится секунд за десять.";
+    tbl.innerHTML = `<tbody><tr><td class="msg">${t}</td></tr></tbody>`; cards.innerHTML = `<div class="panel card"><span class="k">${t}</span></div>`; return;
+  }
+  const rows = bmRows(), tax = bmTax();
+  if (!fromHist) bmLoadHist(rows);
+  const vol = (r) => { const h = bmHist[r.id]; return h ? h[r.q] || 0 : NaN; };
+  const ageS = (a) => `<span class="age${isFreshH(a) ? " fresh" : ""}">${fmtAge(a)}</span>`;
+  const head = `<thead><tr><th scope="col">Вещь</th><th scope="col">Купить</th><th scope="col">Чёрный рынок платит</th><th scope="col">Прибыль за 1 шт.</th><th scope="col" title="Сколько вещей этого качества Чёрный рынок купил за день — в среднем за неделю">ЧР берёт в день</th></tr></thead>`;
+  let h = head + "<tbody>", m = "";
+  if (!rows.length) {
+    const t = `Связок с прибылью от ${fmt(+S.bm.minP || 0)} и ценами не старше ${fmtAge(+S.bm.age)} не нашлось. Попробуй другие группы, города или срок свежести.`;
+    h += `<tr><td class="msg" colspan="5">${t}</td></tr>`; m = `<div class="panel card"><span class="k">${t}</span></div>`;
+  }
+  for (const r of rows.slice(0, 150)) {
+    const v = vol(r), qNote = r.buy.q > r.q ? ` <small class="bm-qn" title="Дешевле всего вещь лучшего качества — Чёрный рынок примет её в заказ на худшее">берёшь «${BM_Q[r.buy.q]}»</small>` : "";
+    const name = `<div class="item">${bmIcon(r.id, r.q, 36)}<div class="iname"><b>${esc(bmName(r.id))}</b><small>${bmTE(r.id)} · ${BM_Q[r.q]}${qNote}</small></div></div>`;
+    const buy = `${cityHtml(r.buy.c)} <b>${fmt(r.buy.p)}</b> ${ageS(r.buy.a)}`;
+    const bm = `<b>${fmt(r.bm)}</b> ${ageS(r.aB)}`;
+    const pr = `<b class="pos">+${fmt(r.profit)}</b> <small class="age">${nf0.format(r.pct * 100)}%</small>`;
+    const vv = isFinite(v) ? (v >= 1 ? `~${nf0.format(v)}` : v > 0 ? "<1" : `<span class="empty">0</span>`) : `<span class="empty">…</span>`;
+    h += `<tr><td>${name}</td><td>${buy}</td><td>${bm}</td><td>${pr}</td><td>${vv}</td></tr>`;
+    m += `<section class="panel card"><div class="card-h">${bmIcon(r.id, r.q, 42)}<div class="iname"><b>${esc(bmName(r.id))}</b><small>${bmTE(r.id)} · ${BM_Q[r.q]}${qNote}</small></div><b class="pos" style="font-size:18px">+${fmt(r.profit)}</b></div>`
+      + `<div class="m-line"><span class="k">Купить</span>${buy}</div><div class="m-line"><span class="k">ЧР платит</span>${bm}</div><div class="m-line"><span class="k">ЧР берёт в день</span><b>${vv}</b></div></section>`;
+  }
+  tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
+  const note = $("bm-note");
+  if (note) note.textContent = `${rows.length ? `Связок: ${fmt(rows.length)}${rows.length > 150 ? " (показаны 150 лучших)" : ""}. ` : ""}Прибыль = цена Чёрного рынка − налог ${nf0.format(tax * 100)}% − цена покупки «в кнопку». Сколько штук лежит по этой цене и сколько осталось в заказе ЧР, сервер не знает — проверяй в игре. Цены загружены ${fmtAge((Date.now() - bmAt) / 36e5)} назад.`;
+}
+function openBm(force) { renderBmCtrl(); if (force) bmLoad(true); else renderBm(); }
+
 // дополнительные вкладки включаются в «Условиях»
-const OPT_VIEWS = ["pot", "fish", "fav", "buy"];
+const OPT_VIEWS = ["pot", "fish", "fav", "buy", "bm"];
 const viewOn = (v) => !OPT_VIEWS.includes(v) || !!(S.settings.tabs || {})[v];
 function applyTabs() {
   for (const v of OPT_VIEWS) {
@@ -3311,7 +3447,7 @@ function applyTabs() {
   const tb = document.querySelector(".tabbar"); tb.style.setProperty("--tabs", n); tb.classList.toggle("many", n >= 6); fitBar();
 }
 
-const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "buy", "journal"];
+const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "buy", "bm", "journal"];
 function route() {
   const h = location.hash.replace("#", "");
   const ok = (v) => VIEWS.includes(v) && viewOn(v);
@@ -3332,6 +3468,7 @@ function route() {
   if (S.view === "pot") openPot();
   if (S.view === "fav") openFav();
   if (S.view === "buy") openBuy();
+  if (S.view === "bm") openBm();
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.view; }));
 window.addEventListener("hashchange", route);
