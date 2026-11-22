@@ -3303,7 +3303,7 @@ async function openBuy() {
 const BM_Q = ["", "обычное", "хорошее", "выдающееся", "превосходное", "шедевр"];
 const BM_SECS = ["Оружие", "Броня", "Левая рука", "Сумки и плащи"];
 S.bm = { sec: "Броня", groups: ["Кожаная броня"], tiers: [6, 7, 8], enchs: [0, 1, 2], from: ["Brecilien", "Caerleon"], age: 6, minP: 5000, ...(S.bm && typeof S.bm === "object" ? S.bm : {}) };
-let bmData = {}, bmHist = {}, bmAt = 0, bmKey = "", bmBusy = false;
+let bmData = {}, bmHist = {}, bmBusy = false, bmQueued = false, bmTimer = 0; // bmData: id → { at, rows }, по серверу
 const bmGroups = (sec) => [...new Set(BM_CAT.filter((c) => c[3] === sec).map((c) => c[2]))];
 const bmName = (id) => { const m = /^T(\d)_(.+?)(?:@(\d))?$/.exec(id), c = m && BM_CAT.find((x) => x[0] === m[2]); return c ? c[1] : id; };
 const bmTE = (id) => { const m = /^T(\d)_.+?(?:@(\d))?$/.exec(id); return m ? `T${m[1]}.${m[2] || 0}` : ""; };
@@ -3314,30 +3314,37 @@ function bmIds() {
   for (const c of BM_CAT) if (b.groups.includes(c[2])) for (const t of c[4]) if (b.tiers.includes(t)) for (const e of b.enchs) out.push(`T${t}_${c[0]}${e ? "@" + e : ""}`);
   return out;
 }
+// грузим только то, чего нет или что старше 10 минут; force — перегрузить всё выбранное
 async function bmLoad(force) {
-  const ids = bmIds(), key = S.settings.server + "|" + ids.join(",");
-  if (!ids.length) { bmData = {}; renderBm(); return; }
-  if (!force && key === bmKey && Date.now() - bmAt < 10 * 6e4) { renderBm(); return; }
-  if (bmBusy) return; bmBusy = true;
-  const box = $("bm-table"), cards = $("bm-cards"), locs = encodeURIComponent(["Black Market", ...CITIES].join(","));
-  const data = {}; let done = 0;
-  const msg = (t) => { if (box) box.innerHTML = `<tbody><tr><td class="msg">${t}</td></tr></tbody>`; if (cards) cards.innerHTML = `<div class="panel card"><span class="k">${t}</span></div>`; };
-  try {
-    for (let i = 0; i < ids.length; i += 60) {
-      msg(`Загружаю цены: ${fmt(Math.min(ids.length, done))} из ${fmt(ids.length)} позиций…`);
-      const part = ids.slice(i, i + 60);
+  if (bmBusy) { bmQueued = true; return; }
+  const srv = S.settings.server, ids = bmIds();
+  const need = ids.filter((id) => { const d = bmData[srv + "|" + id]; return force || !d || Date.now() - d.at > 10 * 6e4; });
+  if (!need.length) { renderBm(); return; }
+  bmBusy = true;
+  const locs = encodeURIComponent(["Black Market", ...CITIES].join(",")), note = $("bm-note");
+  let fail = false;
+  for (let i = 0; i < need.length; i += 60) {
+    if (note) note.textContent = `Загружаю цены: ${fmt(i)} из ${fmt(need.length)} позиций…`;
+    const part = need.slice(i, i + 60);
+    try {
       const r = await fetch(`${base()}/api/v2/stats/prices/${part.join(",")}.json?locations=${locs}`).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); });
-      for (const x of r) (data[x.item_id] = data[x.item_id] || []).push(x);
-      done += part.length;
-    }
-    bmData = data; bmAt = Date.now(); bmKey = key; bmHist = {};
-  } catch (e) { bmBusy = false; msg("Не удалось загрузить цены — сервер данных не ответил. Попробуй «Обновить» через минуту."); return; }
-  bmBusy = false; renderBm();
+      const got = {}; for (const x of r) (got[x.item_id] = got[x.item_id] || []).push(x);
+      for (const id of part) bmData[srv + "|" + id] = { at: Date.now(), rows: got[id] || [] };
+    } catch (e) { fail = true; break; }
+  }
+  bmBusy = false;
+  if (bmQueued) { bmQueued = false; bmLoad(false); return; }
+  renderBm();
+  if (fail && note) note.textContent = "Не удалось загрузить часть цен — сервер данных не ответил. Нажми «Обновить» через минуту.";
 }
+// любое изменение выбора — догрузить недостающее, но не на каждый клик подряд
+function bmSchedule() { clearTimeout(bmTimer); bmTimer = setTimeout(() => bmLoad(false), 500); }
 function bmRows() {
   const b = S.bm, now = Date.now(), A = +b.age || 6, tax = bmTax(), out = [];
   const age = (d) => (!d || d.startsWith("0001") ? Infinity : (now - Date.parse(d + "Z")) / 36e5);
-  for (const [id, arr] of Object.entries(bmData)) {
+  const srv = S.settings.server;
+  for (const id of bmIds()) {
+    const d = bmData[srv + "|" + id]; if (!d) continue; const arr = d.rows;
     for (const o of arr) {
       if (o.city !== "Black Market" || !(o.buy_price_max > 0)) continue;
       const aB = age(o.buy_price_max_date); if (aB > A) continue;
@@ -3382,29 +3389,26 @@ function renderBmCtrl() {
     + `<div class="bm-f"><span class="fsum">Покупаю в</span><span class="chips" id="bm-from"></span></div>`
     + `<div class="bm-f"><span class="fsum" title="Обе цены — и в городе, и у Чёрного рынка — не старше этого">Цены не старше</span>${seg([[2, "2 ч"], [4, "4 ч"], [6, "6 ч"], [12, "12 ч"], [24, "сутки"]], b.age, "data-bage")}`
     + `<label class="bm-min"><span class="fsum">Прибыль от</span><input class="in" id="bm-minp" inputmode="numeric" value="${fmt(+b.minP || 0)}"></label>`
-    + `<button class="btn" type="button" id="bm-go">Загрузить</button></div>`;
+    + `<button class="btn ghost" type="button" id="bm-go" title="Перезагрузить цены всех выбранных позиций с сервера">Обновить цены</button></div>`;
   const grs = bmGroups(b.sec);
-  chips($("bm-groups"), grs.map((g) => [g, g]), (v) => b.groups.includes(v), (v) => { b.groups = b.groups.includes(v) ? b.groups.filter((x) => x !== v) : [...b.groups, v]; save(); renderBmCtrl(); });
-  chips($("bm-tiers"), [4, 5, 6, 7, 8].map((t) => [t, "T" + t]), (v) => b.tiers.includes(v), (v) => { b.tiers = toggleIn(b.tiers, v, [4, 5, 6, 7, 8]); save(); renderBmCtrl(); }, (v) => tierCls(v));
-  chips($("bm-enchs"), [0, 1, 2, 3, 4].map((e) => [e, "." + e]), (v) => b.enchs.includes(v), (v) => { b.enchs = toggleIn(b.enchs, v, [0, 1, 2, 3, 4]); save(); renderBmCtrl(); });
+  chips($("bm-groups"), grs.map((g) => [g, g]), (v) => b.groups.includes(v), (v) => { b.groups = b.groups.includes(v) ? b.groups.filter((x) => x !== v) : [...b.groups, v]; save(); renderBmCtrl(); renderBm(); bmSchedule(); });
+  chips($("bm-tiers"), [4, 5, 6, 7, 8].map((t) => [t, "T" + t]), (v) => b.tiers.includes(v), (v) => { b.tiers = toggleIn(b.tiers, v, [4, 5, 6, 7, 8]); save(); renderBmCtrl(); renderBm(); bmSchedule(); }, (v) => tierCls(v));
+  chips($("bm-enchs"), [0, 1, 2, 3, 4].map((e) => [e, "." + e]), (v) => b.enchs.includes(v), (v) => { b.enchs = toggleIn(b.enchs, v, [0, 1, 2, 3, 4]); save(); renderBmCtrl(); renderBm(); bmSchedule(); });
   chips($("bm-from"), CITIES.map((c) => [c, c]), (v) => b.from.includes(v), (v) => { b.from = toggleIn(b.from, v, CITIES); save(); renderBmCtrl(); renderBm(); });
-  box.querySelectorAll("[data-bgx]").forEach((x) => x.addEventListener("click", () => { b.groups = b.groups.filter((g) => g !== x.dataset.bgx); save(); renderBmCtrl(); }));
+  box.querySelectorAll("[data-bgx]").forEach((x) => x.addEventListener("click", () => { b.groups = b.groups.filter((g) => g !== x.dataset.bgx); save(); renderBmCtrl(); renderBm(); }));
   box.querySelectorAll("[data-bsec]").forEach((x) => x.addEventListener("click", () => { b.sec = x.dataset.bsec; save(); renderBmCtrl(); }));
   box.querySelectorAll("[data-bage]").forEach((x) => x.addEventListener("click", () => { b.age = +x.dataset.bage; save(); renderBmCtrl(); renderBm(); }));
   $("bm-minp").addEventListener("change", (e) => { b.minP = +e.target.value.replace(/[^\d]/g, "") || 0; save(); renderBmCtrl(); renderBm(); });
   $("bm-go").addEventListener("click", () => bmLoad(true));
-  const n = bmIds().length, sel = b.groups.length;
-  $("bm-go").textContent = n ? `Загрузить · ${fmt(n)} поз.` : "Выбери группы";
+  const n = bmIds().length;
   $("bm-go").disabled = !n;
-  // выбор поменялся, а цены ещё по старому — подсвечиваем кнопку
-  const stale = n && S.settings.server + "|" + bmIds().join(",") !== bmKey;
-  $("bm-go").classList.toggle("primary", !!stale);
-  if (sel === 0) $("bm-go").title = "Выбери хотя бы одну группу";
+  $("bm-go").textContent = n ? `Обновить цены · ${fmt(n)} поз.` : "Выбери группы";
 }
 function renderBm(fromHist = false) {
   const tbl = $("bm-table"), cards = $("bm-cards"); if (!tbl) return;
-  if (!Object.keys(bmData).length) {
-    const t = "Выбери группы, тиры и зачарования и нажми «Загрузить». Одна группа на T6–T8 .0–.2 — это около сотни позиций, грузится секунд за десять.";
+  const ids = bmIds(), srv = S.settings.server, loaded = ids.filter((id) => bmData[srv + "|" + id]);
+  if (!ids.length || !loaded.length) {
+    const t = !ids.length ? "Выбери хотя бы одну группу." : "Загружаю цены выбранных позиций…";
     tbl.innerHTML = `<tbody><tr><td class="msg">${t}</td></tr></tbody>`; cards.innerHTML = `<div class="panel card"><span class="k">${t}</span></div>`; return;
   }
   const rows = bmRows(), tax = bmTax();
@@ -3430,9 +3434,9 @@ function renderBm(fromHist = false) {
   }
   tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
   const note = $("bm-note");
-  if (note) note.textContent = `${rows.length ? `Связок: ${fmt(rows.length)}${rows.length > 150 ? " (показаны 150 лучших)" : ""}. ` : ""}Прибыль = цена Чёрного рынка − налог ${nf0.format(tax * 100)}% − цена покупки «в кнопку». Сколько штук лежит по этой цене и сколько осталось в заказе ЧР, сервер не знает — проверяй в игре. Цены загружены ${fmtAge((Date.now() - bmAt) / 36e5)} назад.`;
+  if (note) note.textContent = `${rows.length ? `Связок: ${fmt(rows.length)}${rows.length > 150 ? " (показаны 150 лучших)" : ""}. ` : ""}Прибыль = цена Чёрного рынка − налог ${nf0.format(tax * 100)}% − цена покупки «в кнопку». Сколько штук лежит по этой цене и сколько осталось в заказе ЧР, сервер не знает — проверяй в игре. Цены загружены ${fmtAge((Date.now() - Math.min(...loaded.map((id) => bmData[srv + "|" + id].at))) / 36e5)} назад${loaded.length < ids.length ? ` · ещё грузится ${fmt(ids.length - loaded.length)} поз.` : ""}.`;
 }
-function openBm(force) { renderBmCtrl(); if (force) bmLoad(true); else renderBm(); }
+function openBm(force) { renderBmCtrl(); renderBm(); bmLoad(!!force); }
 
 // дополнительные вкладки включаются в «Условиях»
 const OPT_VIEWS = ["pot", "fish", "fav", "buy", "bm"];
