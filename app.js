@@ -3304,6 +3304,7 @@ const BM_Q = ["", "обычное", "хорошее", "выдающееся", "�
 const BM_SECS = ["Всё", "Оружие", "Броня", "Левая рука", "Сумки и плащи"];
 S.bm = { sec: "Всё", groups: ["Кожаная броня"], tiers: [6, 7, 8], enchs: [0, 1, 2], from: ["Brecilien", "Caerleon"], age: 6, minP: 5000, ...(S.bm && typeof S.bm === "object" ? S.bm : {}) };
 // один раз переводим на режим «Всё»: сначала узнать, что вообще выгодно, а уже потом сужать
+if (!S.bm.sort) { S.bm.sort = "p"; S.bm.dir = -1; S.bm.minM = 0; S.bm.minV = 0; }
 if (!S.bm.v2) { S.bm.sec = "Всё"; S.bm.tiers = [4, 5, 6, 7, 8]; S.bm.enchs = [0, 1, 2, 3]; S.bm.v2 = true; }
 let bmData = {}, bmHist = {}, bmBusy = false, bmQueued = false, bmTimer = 0; // bmData: id → { at, rows }, по серверу
 const bmGroups = (sec) => [...new Set(BM_CAT.filter((c) => sec === "Всё" || c[3] === sec).map((c) => c[2]))];
@@ -3390,13 +3391,15 @@ function bmRows() {
   return out.sort((x, y) => y.profit - x.profit);
 }
 async function bmLoadHist(rows) {
-  const need = [...new Set(rows.slice(0, 80).map((r) => r.id))].filter((id) => !bmHist[id]);
+  const need = [...new Set(rows.map((r) => r.id))].slice(0, 600).filter((id) => !bmHist[id]);
   if (!need.length) return;
   const now = Date.now();
   for (let i = 0; i < need.length; i += 40) {
     const part = need.slice(i, i + 40);
     try {
-      const r = await fetch(`${base()}/api/v2/stats/history/${part.join(",")}.json?locations=Black%20Market&time-scale=24`).then((x) => x.json());
+      let r = null;
+      for (let k = 0; k < 3 && !r; k++) { const x = await fetch(`${base()}/api/v2/stats/history/${part.join(",")}.json?locations=Black%20Market&time-scale=24`); if (x.status === 429) { await new Promise((res) => setTimeout(res, 4000 * (k + 1))); continue; } r = await x.json(); }
+      if (!r) throw new Error("429");
       for (const id of part) bmHist[id] = {};
       for (const x of r) {
         const L = x.data.filter((q) => { const a = now - Date.parse(q.timestamp + "Z"); return a > 864e5 && a < 8 * 864e5; });
@@ -3416,6 +3419,9 @@ function renderBmCtrl() {
     + `<div class="bm-f"><span class="fsum">Покупаю в</span><span class="chips" id="bm-from"></span></div>`
     + `<div class="bm-f"><span class="fsum" title="Обе цены — и в городе, и у Чёрного рынка — не старше этого">Цены не старше</span>${seg([[2, "2 ч"], [4, "4 ч"], [6, "6 ч"], [12, "12 ч"], [24, "сутки"]], b.age, "data-bage")}`
     + `<label class="bm-min"><span class="fsum">Прибыль от</span><input class="in" id="bm-minp" inputmode="numeric" value="${fmt(+b.minP || 0)}"></label>`
+    + `<label class="bm-min"><span class="fsum">Маржа от, %</span><input class="in sm" id="bm-minm" inputmode="numeric" value="${+b.minM || 0}"></label>`
+    + `<label class="bm-min"><span class="fsum" title="Сколько вещей этого качества Чёрный рынок покупает в день — в среднем за неделю">ЧР берёт от, в день</span><input class="in sm" id="bm-minv" inputmode="numeric" value="${+b.minV || 0}"></label>`
+    + `</div><div class="bm-f mob"><span class="fsum">Сортировка</span>${seg([["p", "прибыль"], ["m", "маржа"], ["v", "в день"]], b.sort || "p", "data-bsortm")}`
     + `<button class="btn ghost" type="button" id="bm-go" title="Перезагрузить цены всех выбранных позиций с сервера">Обновить цены</button></div>`;
   const grs = bmGroups(b.sec);
   if ($("bm-groups")) chips($("bm-groups"), grs.map((g) => [g, g]), (v) => b.groups.includes(v), (v) => { b.groups = b.groups.includes(v) ? b.groups.filter((x) => x !== v) : [...b.groups, v]; save(); renderBmCtrl(); renderBm(); bmSchedule(); });
@@ -3425,6 +3431,9 @@ function renderBmCtrl() {
   box.querySelectorAll("[data-bgx]").forEach((x) => x.addEventListener("click", () => { b.groups = b.groups.filter((g) => g !== x.dataset.bgx); save(); renderBmCtrl(); renderBm(); }));
   box.querySelectorAll("[data-bsec]").forEach((x) => x.addEventListener("click", () => { b.sec = x.dataset.bsec; save(); renderBmCtrl(); renderBm(); bmSchedule(); }));
   box.querySelectorAll("[data-bage]").forEach((x) => x.addEventListener("click", () => { b.age = +x.dataset.bage; save(); renderBmCtrl(); renderBm(); }));
+  box.querySelectorAll("[data-bsortm]").forEach((x) => x.addEventListener("click", () => { b.sort = x.dataset.bsortm; b.dir = -1; save(); renderBmCtrl(); renderBm(true); }));
+  $("bm-minm").addEventListener("change", (e) => { b.minM = +e.target.value.replace(/[^\d]/g, "") || 0; save(); renderBmCtrl(); renderBm(true); });
+  $("bm-minv").addEventListener("change", (e) => { b.minV = +e.target.value.replace(/[^\d]/g, "") || 0; save(); renderBmCtrl(); renderBm(true); });
   $("bm-minp").addEventListener("change", (e) => { b.minP = +e.target.value.replace(/[^\d]/g, "") || 0; save(); renderBmCtrl(); renderBm(); });
   $("bm-go").addEventListener("click", () => bmLoad(true));
   const n = bmIds().length;
@@ -3438,30 +3447,36 @@ function renderBm(fromHist = false) {
     const t = !ids.length ? "Выбери хотя бы одну группу." : "Загружаю цены выбранных позиций…";
     tbl.innerHTML = `<tbody><tr><td class="msg">${t}</td></tr></tbody>`; cards.innerHTML = `<div class="panel card"><span class="k">${t}</span></div>`; return;
   }
-  const rows = bmRows(), tax = bmTax();
-  if (!fromHist) bmLoadHist(rows);
+  const all = bmRows(), tax = bmTax(), b = S.bm;
+  if (!fromHist) bmLoadHist(all);
   const vol = (r) => { const h = bmHist[r.id]; return h ? h[r.q] || 0 : NaN; };
+  // объём ещё не подгружен — строку не прячем, пока не узнаем
+  const rows = all.filter((r) => r.pct * 100 >= (+b.minM || 0) && (!(+b.minV) || !isFinite(vol(r)) || vol(r) >= +b.minV));
+  const key = { p: (r) => r.profit, m: (r) => r.pct, v: (r) => (isFinite(vol(r)) ? vol(r) : -1) }[b.sort] || ((r) => r.profit), dir = b.dir || -1;
+  rows.sort((x, y) => dir * (key(x) - key(y)) || y.profit - x.profit);
   const ageS = (a) => `<span class="age${isFreshH(a) ? " fresh" : ""}">${fmtAge(a)}</span>`;
-  const head = `<thead><tr><th scope="col">Вещь</th><th scope="col">Купить</th><th scope="col">Чёрный рынок платит</th><th scope="col">Прибыль за 1 шт.</th><th scope="col" title="Сколько вещей этого качества Чёрный рынок купил за день — в среднем за неделю">ЧР берёт в день</th></tr></thead>`;
+  const sh = (k, label, tip) => { const on = b.sort === k; return `<th scope="col" aria-sort="${on ? (dir < 0 ? "descending" : "ascending") : "none"}"><button type="button" class="sorth${on ? " on" : ""}" data-bsort="${k}" title="${tip}">${label}<span class="arr" aria-hidden="true">${on ? (dir < 0 ? "↓" : "↑") : "↕"}</span></button></th>`; };
+  const head = `<thead><tr><th scope="col">Вещь</th><th scope="col">Купить</th><th scope="col">Чёрный рынок платит</th>${sh("p", "Прибыль за 1 шт.", "Цена ЧР минус налог минус цена покупки")}${sh("m", "Маржа", "Прибыль к цене покупки")}${sh("v", "ЧР берёт в день", "Сколько вещей этого качества Чёрный рынок купил за день — в среднем за неделю")}</tr></thead>`;
   let h = head + "<tbody>", m = "";
   if (!rows.length) {
-    const t = `Связок с прибылью от ${fmt(+S.bm.minP || 0)} и ценами не старше ${fmtAge(+S.bm.age)} не нашлось. Попробуй другие группы, города или срок свежести.`;
-    h += `<tr><td class="msg" colspan="5">${t}</td></tr>`; m = `<div class="panel card"><span class="k">${t}</span></div>`;
+    const t = all.length ? `Связки есть (${fmt(all.length)}), но под фильтры «Маржа от» и «ЧР берёт от» ни одна не подходит.` : `Связок с прибылью от ${fmt(+S.bm.minP || 0)} и ценами не старше ${fmtAge(+S.bm.age)} не нашлось. Попробуй другие группы, города или срок свежести.`;
+    h += `<tr><td class="msg" colspan="6">${t}</td></tr>`; m = `<div class="panel card"><span class="k">${t}</span></div>`;
   }
   for (const r of rows.slice(0, 150)) {
     const v = vol(r), qNote = r.buy.q > r.q ? ` <small class="bm-qn" title="Дешевле всего вещь лучшего качества — Чёрный рынок примет её в заказ на худшее">берёшь «${BM_Q[r.buy.q]}»</small>` : "";
     const name = `<div class="item">${bmIcon(r.id, r.q, 36)}<div class="iname"><b>${esc(bmName(r.id))}</b><small>${esc(bmGroupOf(r.id))} · ${bmTE(r.id)} · ${BM_Q[r.q]}${qNote}</small></div></div>`;
     const buy = `${cityHtml(r.buy.c)} <b>${fmt(r.buy.p)}</b> ${ageS(r.buy.a)}`;
     const bm = `<b>${fmt(r.bm)}</b> ${ageS(r.aB)}`;
-    const pr = `<b class="pos">+${fmt(r.profit)}</b> <small class="age">${nf0.format(r.pct * 100)}%</small>`;
+    const pr = `<b class="pos">+${fmt(r.profit)}</b>`, mg = `<b class="pos">${nf0.format(r.pct * 100)}%</b>`;
     const vv = isFinite(v) ? (v >= 1 ? `~${nf0.format(v)}` : v > 0 ? "<1" : `<span class="empty">0</span>`) : `<span class="empty">…</span>`;
-    h += `<tr><td>${name}</td><td>${buy}</td><td>${bm}</td><td>${pr}</td><td>${vv}</td></tr>`;
-    m += `<section class="panel card"><div class="card-h">${bmIcon(r.id, r.q, 42)}<div class="iname"><b>${esc(bmName(r.id))}</b><small>${esc(bmGroupOf(r.id))} · ${bmTE(r.id)} · ${BM_Q[r.q]}${qNote}</small></div><b class="pos" style="font-size:18px">+${fmt(r.profit)}</b></div>`
+    h += `<tr><td>${name}</td><td>${buy}</td><td>${bm}</td><td>${pr}</td><td>${mg}</td><td>${vv}</td></tr>`;
+    m += `<section class="panel card"><div class="card-h">${bmIcon(r.id, r.q, 42)}<div class="iname"><b>${esc(bmName(r.id))}</b><small>${esc(bmGroupOf(r.id))} · ${bmTE(r.id)} · ${BM_Q[r.q]}${qNote}</small></div><b class="pos" style="font-size:18px">+${fmt(r.profit)}<small class="age"> ${nf0.format(r.pct * 100)}%</small></b></div>`
       + `<div class="m-line"><span class="k">Купить</span>${buy}</div><div class="m-line"><span class="k">ЧР платит</span>${bm}</div><div class="m-line"><span class="k">ЧР берёт в день</span><b>${vv}</b></div></section>`;
   }
   tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
+  tbl.querySelectorAll("[data-bsort]").forEach((x) => x.addEventListener("click", () => { const k = x.dataset.bsort; if (b.sort === k) b.dir = -(b.dir || -1); else { b.sort = k; b.dir = -1; } save(); renderBm(true); }));
   const note = $("bm-note");
-  if (note) note.textContent = `${rows.length ? `Связок: ${fmt(rows.length)}${rows.length > 150 ? " (показаны 150 лучших)" : ""}. ` : ""}Прибыль = цена Чёрного рынка − налог ${nf0.format(tax * 100)}% − цена покупки «в кнопку». Сколько штук лежит по этой цене и сколько осталось в заказе ЧР, сервер не знает — проверяй в игре. Цены загружены ${fmtAge((Date.now() - Math.min(...loaded.map((id) => bmData[srv + "|" + id].at))) / 36e5)} назад${loaded.length < ids.length ? ` · ещё грузится ${fmt(ids.length - loaded.length)} поз.` : ""}.`;
+  if (note) note.textContent = `${rows.length ? `Связок: ${fmt(rows.length)}${all.length > rows.length ? ` из ${fmt(all.length)}` : ""}${rows.length > 150 ? " (показаны первые 150)" : ""}. ` : ""}Прибыль = цена Чёрного рынка − налог ${nf0.format(tax * 100)}% − цена покупки «в кнопку». Сколько штук лежит по этой цене и сколько осталось в заказе ЧР, сервер не знает — проверяй в игре. Цены загружены ${fmtAge((Date.now() - Math.min(...loaded.map((id) => bmData[srv + "|" + id].at))) / 36e5)} назад${loaded.length < ids.length ? ` · ещё грузится ${fmt(ids.length - loaded.length)} поз.` : ""}.`;
 }
 function openBm(force) { renderBmCtrl(); renderBm(); bmLoad(!!force); }
 

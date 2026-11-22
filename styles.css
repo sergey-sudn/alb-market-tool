@@ -938,3 +938,5 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .grid.bm .age.fresh{color:var(--ink);font-weight:600}
 .bm-x{border:1px solid var(--line-2);background:transparent;color:var(--ink);border-radius:999px;padding:4px 10px;font:inherit;font-size:13px;cursor:pointer}
 .bm-x:hover{border-color:var(--accent)}
+.bm-min .in.sm{width:64px}
+@media (max-width:760px){.bm-f .seg{flex-wrap:wrap;max-width:100%}.bm-f>*{min-width:0}.bm-min{flex-wrap:wrap}}
