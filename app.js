@@ -2551,10 +2551,16 @@ function favInput(id, c, side, ord, compact = false, best = false) {
   // в узкой ячейке рядом с возрастом — код города, чтобы не путать столбцы, когда шапка уехала
   const code = compact ? `<b class="fav-cc" style="color:${CITY_COLOR[c]}">${CITY_CODE[c] || ""}</b>` : "";
   const fresh = !mine && a && isFreshH(aAge);
+  // цена с сервера, которую расчёты не берут: ордер сильно ниже обычных сделок или лот сильно дороже
+  const oddR = !mine && a && aAge <= maxAge() ? oddPrice(id, c, side, a.p) : null;
+  const oddTip = oddR ? (side === "buy"
+    ? `Ордер ${fmt(a.p)} не учитывается: за неделю 80% сделок здесь прошли дороже ${fmt(oddR.p20)}, а он меньше 60% от этого. Такой ордер почти не исполняется — скорее всего, кто-то поставил «на удачу»`
+    : `Лот ${fmt(a.p)} не учитывается: за неделю 80% сделок прошли не дороже ${fmt(oddR.p80)}, а он выше этого больше чем на 30%`) : "";
   const src = mine ? `<small class="fav-src man">${code}${compact ? "" : "ты · "}${fmtAge((Date.now() - m[1]) / 36e5)}${compact ? "" : " назад"}</small>`
-    : a ? `<small class="fav-src${fresh ? " fresh" : ""}">${code}${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}</small>` : `<small class="fav-src">${code}${compact ? "" : "нет цены"}</small>`;
+    : a ? `<small class="fav-src${fresh ? " fresh" : ""}">${code}${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}${oddR ? (compact ? " ⚠" : " · не в расчёте") : ""}</small>` : `<small class="fav-src">${code}${compact ? "" : "нет цены"}</small>`;
   const bc = best ? ` best-${sd}` : "";
-  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${compact ? " sm" : ""}${bc}"${best ? ` title="Лучшая цена — как на «Ценах»"` : ""}><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
+  const tip = oddR ? oddTip : best ? "Лучшая цена — как на «Ценах»" : "";
+  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${oddR ? " odd" : ""}${compact ? " sm" : ""}${bc}"${tip ? ` title="${esc(tip)}"` : ""}><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
 // У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта

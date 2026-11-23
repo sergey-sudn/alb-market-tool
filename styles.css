@@ -979,3 +979,6 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .zl{font:inherit;font-size:13px;font-weight:600;padding:4px 9px;border-radius:9px;border:1px solid color-mix(in srgb,var(--zc) 45%,transparent);background:color-mix(in srgb,var(--zc) 10%,transparent);color:var(--ink);cursor:pointer}
 .zl:hover{background:color-mix(in srgb,var(--zc) 22%,transparent)}
 @media (max-width:760px){.road-card{padding:14px}.rc-head h2{font-size:20px}.rc-bar{grid-template-columns:minmax(0,1fr) 60px 38px}}
+/* избранное: цена с сервера, которую расчёты не берут (ордер-«удочка» или завышенный лот) */
+.fav-in.odd input::placeholder{text-decoration:line-through;opacity:.55}
+.fav-in.odd{cursor:help}
