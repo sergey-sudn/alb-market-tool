@@ -388,6 +388,14 @@ function sellIn(id, city) {
 // случайных цен: по ней обычно лежит пара лотов или стоит ордер, который тут же перебьют, и объём там не собрать.
 // «Типичный» — город из середины (при чётном числе — тот, что хуже): стак так и собирают, ордерами в нескольких городах
 const midPick = () => S.settings.pick !== "best";
+// зелёная рамка — лучшая цена (самая выгодная), фиолетовая заливка — то, что сейчас в расчёте
+const MARK_LEGEND = `<p class="dn mark-legend"><span class="mk top"></span>лучшая цена <span class="mk use"></span>в расчёте</p>`;
+function topBuyCity(id, cities, how) {
+  let top = null, bp = Infinity;
+  for (const c of cities) { const q = quoteBuy(id, c, how); if (q && !q.odd && q.price * q.fee < bp) { bp = q.price * q.fee; top = c; } }
+  return top;
+}
+const topSellCity = (rows) => ((rows.find((x) => !x.o.noHist) || rows[0] || {}).c);
 const pickWord = () => (midPick() ? "По средним ценам" : "По лучшим ценам");
 // переключатель «Цены: средние / лучшие» на страницах — то же, что «Какой город брать» в «Условиях»
 const PICK_TIP = "Средние — город из середины по ценам городов (при чётном числе — тот, что хуже): так стак и собирают, ордерами в нескольких городах. Лучшие — самая выгодная цена в каждом городе, как считалось раньше: по ней обычно лежит пара лотов или стоит ордер, который тут же перебьют";
@@ -1227,17 +1235,20 @@ function howSeg(kind, how, withOwn = false, own = false) {
 function cityPicks(kind, quotes, cur) {
   const list = quotes.filter((x) => x.o).sort((a, b) => a.o.paid - b.o.paid);
   if (!list.length) return `<p class="dn">Нет цен ни в одном городе.</p>`;
+  const top = (list.find((x) => !x.o.odd) || {}).c;
   return `<div class="vars cpick">${list.map(({ c, o }) => pickBtn(`data-pick="${kind}City" data-v="${esc(c)}"`, cur && cur.city === c,
-    `${cityBadge(c)}<span class="${o.odd ? "odd" : ""}">${fmt(o.unit ?? o.price)}</span>`, "var cv",
+    `${cityBadge(c)}<span class="${o.odd ? "odd" : ""}">${fmt(o.unit ?? o.price)}</span>`, `var cv${c === top ? " top" : ""}`,
     o.odd ? "Не похоже на реальную цену: ордер сильно ниже обычного. Можно выбрать, но расчёт будет неточным" : `${c}: ${o.src === "order" ? "свой ордер" : "лот"} ${fmt(o.unit ?? o.price)}${o.fee > 1 ? " + комиссия" : ""}`)).join("")}</div>`;
 }
 // варианты камня: цена за штуку и (в скобках) в пересчёте на обычный; клик — считать этим камнем
 function stoneVariants(r) {
   const m = calcSettings(r.f).mult, k0 = stoneK(r), how = howOf(r.raw);
+  const qs = [0, 1, 2, 3].map((k) => cheapest((c) => rawQuote(r.f, r.t, 0, k, c, how)));
+  const kTop = [0, 1, 2, 3].reduce((a, k) => ((qs[k] ? qs[k].paid : Infinity) < (qs[a] ? qs[a].paid : Infinity) ? k : a), 0);
   return [0, 1, 2, 3].map((k) => {
-    const o = cheapest((c) => rawQuote(r.f, r.t, 0, k, c, how));
+    const o = qs[k];
     const txt = !o ? `.${k} —` : k ? `.${k} ${fmt(o.unit)} <span class="eq">(${fmt(o.unit / m[k - 1])})</span>` : `.0 ${fmt(o.unit)}`;
-    return o ? pickBtn(`data-pick="rawK" data-v="${k}"`, k === k0 && !!r.raw, txt) : `<span class="var off">${txt}</span>`;
+    return o ? pickBtn(`data-pick="rawK" data-v="${k}"`, k === k0 && !!r.raw, txt, `var${k === kTop ? " top" : ""}`) : `<span class="var off">${txt}</span>`;
   }).join("");
 }
 function detHtml(r) {
@@ -1254,7 +1265,7 @@ function detHtml(r) {
     h += `<div class="pickbar"><span><b>Свой вариант.</b> ${b.ok ? `${pickWord()}: маржа ${nf0.format(b.margin * 100)}%, ${fmtBig(b.profit * STACK)} за стак.` : ""}${r.ok && b.ok ? ` Разница <b class="${r.profit - b.profit >= 0 ? "pos" : "neg"}">${fmtBig((r.profit - b.profit) * STACK)}</b> за стак.` : ""}</span>`
       + `<button type="button" class="btn ghost" data-pick="reset" title="Убрать свой выбор и считать по ${pickWord().toLowerCase()}">↺ Сбросить выбор</button></div>`;
   }
-  h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>`
+  h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>${MARK_LEGEND}`
     + kv(lnk(rawId(r.f, r.t, k || r.e), `${esc(rawName)} ×${N[r.t]}`), r.raw ? `${fmt(r.raw.unit)}${k ? ` <span class="eq">(.0 — ${fmt(r.raw.price)})</span>` : ""}` : "нет цены")
     + (r.raw ? `<p class="dn">${metaLine(r.raw)}</p>` : "") + oddWarn(r.raw)
     + (FAM[r.f].stone ? `<div class="vars" title="Цена за штуку, в скобках — в пересчёте на обычный камень: зачарованный даёт в 2/4/8 раз больше блоков. Нажми, чтобы считать этим камнем">${stoneVariants(r)}</div>` : "")
@@ -1351,7 +1362,7 @@ function whereSell(r) {
   const rows = sellCities().map((c) => ({ c, o: sellIn(r.id, c) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - r.c.buf) * (1 - r.c.fee) - r.cost;
   const liq = liquidity(r.sell.vol);
-  return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<button type="button" class="dl ws${c === r.sell.city ? " on" : ""}" data-pick="sellCity" data-v="${esc(c)}" aria-pressed="${c === r.sell.city}" title="Считать продажу в ${esc(c)}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></button>`).join("")}
+  return `<div class="det-b"><h4>Продажа</h4>${rows.map(({ c, o }) => `<button type="button" class="dl ws${c === r.sell.city ? " on" : ""}${c === topSellCity(rows) ? " top" : ""}" data-pick="sellCity" data-v="${esc(c)}" aria-pressed="${c === r.sell.city}" title="Считать продажу в ${esc(c)}">${cityBadge(c)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}</span><b>${fmt(o.price)}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></button>`).join("")}
     <p class="dn">Город · продаётся в день · возраст цены · цена · прибыль с 1 шт. Нажми на город, чтобы считать продажу там. Цена за вычетом уценки ${fmtPct(r.c.buf)} и ${relists() ? "налога со сборами" : "налога"} ${fmtPct(r.c.fee)}</p>
     <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
 }
@@ -2198,32 +2209,32 @@ function potDet(r) {
   const tgt = c.m, keep = (x) => (isRareAlch(x.id) ? 1 : 1 - r.r), all = r.ing.reduce((a, x) => a + x.n * x.o.paid * keep(x), 0);
   const income = r.net * r.out; // выручка с одного крафта после налога и уценки
   const body = r.ing.map((x) => {
-    const how = howOf(x.o), ref = weekRef(x.id), others = all - x.n * x.o.paid * keep(x), k = x.n * keep(x);
+    const how = howOf(x.o), topCity = topBuyCity(x.id, cities, how), ref = weekRef(x.id), others = all - x.n * x.o.paid * keep(x), k = x.n * keep(x);
     const limPaid = (m) => (income / (1 + m) - others) / k, fee = x.o.fee || 1;
     const marginAt = (paid) => income / (others + k * paid) - 1;
     const lim = limPaid(tgt), be = limPaid(0);
     const cells = cities.map((cc) => {
       const q = quoteBuy(x.id, cc, how);
       if (!q) return `<td class="na pp" tabindex="0" data-pp="ing" data-pot="${esc(r.id)}" data-i="${esc(x.id)}" data-c="${esc(cc)}" data-side="${how === "order" ? "buy" : "sell"}" data-v="" data-nopick="1" title="${esc(`${cc}: нет цены. Двойной клик — вписать свою`)}"><span class="pp-v">—</span></td>`;
-      const best = cc === x.o.city, mg = marginAt(q.price * q.fee);
+      const best = cc === x.o.city, top = cc === topCity, mg = marginAt(q.price * q.fee);
       const g = q.odd ? "" : mg >= tgt ? "g-ok" : mg >= 0 ? "g-mid" : "g-bad";
       const tip = `${cc}: ${q.src === "order" ? "свой ордер" : "лот"} ${fmt(q.price)}${q.age !== undefined ? `, ${fmtAge(q.age)} назад` : ""}${isFinite(q.vol) ? `, ~${nf0.format(q.vol)} в день` : ""}${q.odd ? ". Не похоже на реальную цену" : `. Маржа зелья по этой цене: ${mg < 0 ? "−" : ""}${nf0.format(Math.abs(mg * 100))}%`}${ref ? `. Обычно за неделю: ${fmt(ref.p20)}–${fmt(ref.p80)}` : ""}`;
-      return `<td class="pp${best ? " best" : ""}${q.odd ? " odd" : ""}" tabindex="0" data-pp="ing" data-pot="${esc(r.id)}" data-i="${esc(x.id)}" data-c="${esc(cc)}" data-side="${q.src === "order" ? "buy" : "sell"}" data-v="${Math.round(q.price)}" data-man="${q.manual ? 1 : ""}" title="${esc(tip + PP_TIP)}"><span class="qc pp-v"><span class="qp ${g}">${fmt(q.price)}${q.manual ? MSTAR : ""}</span><small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></span></td>`;
+      return `<td class="pp${best ? " use" : ""}${top ? " top" : ""}${q.odd ? " odd" : ""}" tabindex="0" data-pp="ing" data-pot="${esc(r.id)}" data-i="${esc(x.id)}" data-c="${esc(cc)}" data-side="${q.src === "order" ? "buy" : "sell"}" data-v="${Math.round(q.price)}" data-man="${q.manual ? 1 : ""}" title="${esc(tip + PP_TIP)}"><span class="qc pp-v"><span class="qp ${g}">${fmt(q.price)}${q.manual ? MSTAR : ""}</span><small class="qa${q.age > 24 ? " old" : ""}">${q.age !== undefined ? fmtAge(q.age) : ""}</small></span></td>`;
     }).join("");
     const limTxt = lim > 0 ? `бери до <b>${fmt(lim / fee)}</b>` : be > 0 ? `до ${nf0.format(tgt * 100)}% не дотянуть` : "в плюс не выйти";
     const limTip = `Если остальные ингредиенты брать там, где дешевле всего: маржа ${nf0.format(tgt * 100)}% — до ${lim > 0 ? fmt(lim / fee) : "—"}, безубыток — до ${be > 0 ? fmt(be / fee) : "—"}${fee > 1 ? " (цена своего ордера, без сбора)" : ""}`;
     return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small><small class="plim" title="${esc(limTip)}">${limTxt}</small></span>${favBtn(x.id, true)}</span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
   const how0 = r.ing.some((x) => x.o.src === "order") ? `свой ордер (лучший ордер +1), если ордеров нет — лот. «За крафт» — сколько уйдёт на ингредиент за один крафт: цена × количество, для ордера ещё +${fmtPct(orderFee() - 1)} сбора за выставление${relists() ? " с учётом перевыставлений" : ""}` : "самый дешёвый лот. «За крафт» — цена × количество на один крафт";
-  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — город, по которому считаем (сначала — по переключателю «Цены»: город из середины или самый дешёвый). Клик по цене — считать этот ингредиент в этом городе, двойной клик — вписать свою цену (★), Enter — сохранить, Esc — отменить, пустое поле — вернуть цену с сервера. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
+  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Зелёная рамка — самая выгодная цена, фиолетовая заливка — город, по которому считаем (сначала — по переключателю «Цены»: город из середины или самый выгодный). Клик по цене — считать этот ингредиент в этом городе, двойной клик — вписать свою цену (★), Enter — сохранить, Esc — отменить, пустое поле — вернуть цену с сервера. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
   h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт. ${hint(legend)}</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
-      <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div></div><div class="pstack">`;
+      <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div>${MARK_LEGEND}</div><div class="pstack">`;
   // продажа по городам
   const sells = sellCities().map((cc) => ({ c: cc, o: sellIn(r.id, cc) })).filter((x) => x.o).sort((a, b) => b.o.price - a.o.price);
   const net = (p) => p * (1 - c.buf) * (1 - c.fee) - r.cost, liq = liquidity(r.sell.vol);
   const totVol = sells.reduce((a, x) => a + (isFinite(x.o.vol) ? x.o.vol : 0), 0);
-  h += `<div class="det-b"><h4>Продажа ${hint(`Город · продаётся в день · возраст цены · цена · прибыль с 1 шт. Всего по городам ~${nf0.format(totVol)} в день. Цена за вычетом уценки ${fmtPct(c.buf)} и налога ${fmtPct(c.fee)}.`)}</h4>${sells.map(({ c: cc, o }) => `<div class="dl ws pp${cc === r.sell.city ? " on" : ""}" tabindex="0" data-pp="sell" data-pot="${esc(r.id)}" data-i="${esc(r.id)}" data-c="${esc(cc)}" data-side="sell" data-v="${Math.round(o.price)}" data-man="${o.manual ? 1 : ""}" title="${esc(`Считать продажу в ${cc}${PP_TIP}`)}">${cityBadge(cc)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}${srcAge(o) ? ` · <span class="ws-age${o.age !== undefined && isFreshH(o.age) ? " fresh" : ""}${o.age > 24 ? " old" : ""}" title="${o.age !== undefined ? `цена видена ${esc(fmtAge(o.age))} назад` : "источник цены"}">${esc(srcAge(o))}</span>` : ""}</span><b class="pp-v">${fmt(o.price)}${o.manual ? MSTAR : ""}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
+  h += `<div class="det-b"><h4>Продажа ${hint(`Город · продаётся в день · возраст цены · цена · прибыль с 1 шт. Всего по городам ~${nf0.format(totVol)} в день. Цена за вычетом уценки ${fmtPct(c.buf)} и налога ${fmtPct(c.fee)}.`)}</h4>${sells.map(({ c: cc, o }) => `<div class="dl ws pp${cc === r.sell.city ? " on" : ""}${cc === topSellCity(sells) ? " top" : ""}" tabindex="0" data-pp="sell" data-pot="${esc(r.id)}" data-i="${esc(r.id)}" data-c="${esc(cc)}" data-side="sell" data-v="${Math.round(o.price)}" data-man="${o.manual ? 1 : ""}" title="${esc(`Считать продажу в ${cc}${PP_TIP}`)}">${cityBadge(cc)}<span class="ws-v">${isFinite(o.vol) ? `~${nf0.format(o.vol)} в день` : o.noHist ? "нет сделок — цена ограничена" : ""}${srcAge(o) ? ` · <span class="ws-age${o.age !== undefined && isFreshH(o.age) ? " fresh" : ""}${o.age > 24 ? " old" : ""}" title="${o.age !== undefined ? `цена видена ${esc(fmtAge(o.age))} назад` : "источник цены"}">${esc(srcAge(o))}</span>` : ""}</span><b class="pp-v">${fmt(o.price)}${o.manual ? MSTAR : ""}</b><b class="${net(o.price) >= 0 ? "pos" : "neg"}">${fmtSigned(net(o.price))}</b></div>`).join("")}
     <p class="dn">${liqDot(r.sell.vol)} В ${esc(r.sell.city)} ${esc(liq.txt)}</p></div>`;
   // деньги
   const cls = r.profit >= 0 ? "pos" : "neg", rare = r.ing.some((x) => isRareAlch(x.id));
