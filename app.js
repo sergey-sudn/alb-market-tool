@@ -2746,6 +2746,9 @@ function renderFav() {
   }
   tbl.innerHTML = h + "</tbody>"; cards.innerHTML = m;
   tbl.classList.toggle("fav-one", sds.length === 1); // одна сторона — цена и возраст в одну строку
+  // допуск задан — ячейки подкрашиваются: лучшая и в пределах допуска — зелёным, дальше — жёлтым
+  const tolOn = S.favTol !== "" && S.favTol != null && isFinite(num(S.favTol));
+  tbl.classList.toggle("fav-tolon", tolOn); cards.classList.toggle("fav-tolon", tolOn);
   favFit();
   const toggle = (el) => {
     const key = el.dataset.key, open = !favOpen.has(key);

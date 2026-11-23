@@ -997,3 +997,6 @@ button.var.top,.det-b button.ws.top,.pdet .ws.pp.top{box-shadow:inset 0 0 0 1.5p
 .fav-dev.far{color:var(--warn,#f0c24b)}
 .fav-tol{display:inline-flex;align-items:center;gap:6px}
 .fav-tol input{width:58px;height:32px;padding:0 8px;text-align:right}
+.fav-tolon :is(td,.fav-pair>div):has(.fav-dev.ok),.fav-tolon :is(td,.fav-pair>div):has(>.fav-in.best-b),.fav-tolon :is(td,.fav-pair>div):has(>.fav-in.best-s){background:var(--good-bg)}
+.fav-tolon :is(td,.fav-pair>div):has(.fav-dev.far){background:var(--warn-bg)}
+.fav-tolon .fav-pair>div{border-radius:8px}
