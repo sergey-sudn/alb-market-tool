@@ -64,7 +64,7 @@ function parseId(id) {
 // ---------- состояние ----------
 const KEY = "alb-market-tool-v1", JKEY = "alb-market-tool-journal", TKEY = "alb-market-tool-theme";
 const DEF = {
-  server: "europe", mode: "safe", age: 24,
+  server: "europe", mode: "safe", pick: "mid", age: 24,
   // где покупаю и где продаю — отдельно; по умолчанию пять основных городов
   buyC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"], sellC: ["Bridgewatch", "Martlock", "Thetford", "Fort Sterling", "Lymhurst"],
   rrr: "0.367", rrrc: 36.7, fee: "0.065", food: 0, margin: 10, buffer: 5, order: true, m: [2, 4, 8],
@@ -384,20 +384,30 @@ function sellIn(id, city) {
   }
   return hs ? { price: hs.p80, city, src: "hist", vol } : null;
 }
+// Какой город брать в расчёт. «Лучший» — самая выгодная цена из всех городов, но это максимум из шести
+// случайных цен: по ней обычно лежит пара лотов или стоит ордер, который тут же перебьют, и объём там не собрать.
+// «Типичный» — город из середины (при чётном числе — тот, что хуже): стак так и собирают, ордерами в нескольких городах
+const midPick = () => S.settings.pick !== "best";
+const midOf = (arr) => arr[midPick() ? Math.floor(arr.length / 2) : 0];
 // сравниваем с учётом комиссии ордера; o.paid — сколько реально уходит серебра за 1 шт.
 function pickBuy(id) {
-  let best = null;
-  for (const c of buyCities()) { const o = buyIn(id, c); if (o) o.paid = o.price * o.fee; if (o && (!best || o.paid < best.paid)) best = o; }
-  return best;
+  const all = [];
+  for (const c of buyCities()) { const o = buyIn(id, c); if (o) { o.paid = o.price * o.fee; all.push(o); } }
+  if (!all.length) return null;
+  all.sort((a, b) => a.paid - b.paid);
+  const o = midOf(all);
+  if (o !== all[0]) { o.mid = all.length; o.best = all[0]; }
+  return o;
 }
 // город, где по предмету нет ни одной сделки за неделю, берём только если больше негде
 function pickSell(id) {
-  let best = null, blind = null;
-  for (const c of sellCities()) {
-    const o = sellIn(id, c); if (!o) continue;
-    if (o.noHist) { if (!blind || o.price > blind.price) blind = o; } else if (!best || o.price > best.price) best = o;
-  }
-  return best || blind;
+  const seen = [], blind = [];
+  for (const c of sellCities()) { const o = sellIn(id, c); if (o) (o.noHist ? blind : seen).push(o); }
+  const all = (seen.length ? seen : blind).sort((a, b) => b.price - a.price);
+  if (!all.length) return null;
+  const o = midOf(all);
+  if (o !== all[0]) { o.mid = all.length; o.best = all[0]; }
+  return o;
 }
 // Сырьё для переработки: у камня сравниваем обычный и зачарованный по цене за «обычный» камень
 function pickRaw(f, t, e) {
@@ -1021,7 +1031,7 @@ function whereCell(o, extra = "", price, lowId) {
     : o.src === "low" ? `<span class="tag" title="${esc(lowNote(o, lowId || ""))}">дёшево?</span>`
     : o.src === "order" ? `<span class="tag ord" title="Цена своего ордера на закупку: лучший ордер в городе +1, плюс 2,5% комиссии. Ордер исполняется не сразу">ордер</span>` : "";
   if (o.src === "order" && !extra) extra = isFinite(o.vol) ? `продаётся ~${nf0.format(o.vol)} в день` : "объём продаж неизвестен";
-  return `<td><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : ""}</span></div>${extra ? `<small>${extra}</small>` : ""}</td>`;
+  return `<td${midTitle(o)}><span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${cityHtml(o.city)}<span class="age">${o.age !== undefined ? fmtAge(o.age) : ""}</span></div>${extra ? `<small>${extra}</small>` : ""}</td>`;
 }
 function liqHtml(vol) {
   const l = liquidity(vol);
@@ -1117,10 +1127,11 @@ function srcText(o) {
   return `самый дешёвый лот${age}`;
 }
 // короткая ячейка цены: число + метка, под ним «город · возраст»
+const midTitle = (o) => o && o.mid ? ` title="${esc(`Город из середины по ${o.mid} городам. Лучшая цена — ${o.best.city} ${fmt(o.best.unit ?? o.best.price)}, но по ней объём обычно не собрать. Сменить — в «Условиях» («Какой город брать») или выбрать город в деталях строки`)}"` : "";
 function priceCell(o, price, extra = "", tag2 = "") {
   if (!o) return `<td><span class="empty">нет цены</span></td>`;
   const tag = o.src === "order" ? `<span class="tag ord">ордер</span>` : o.src === "hist" ? `<span class="tag">история</span>` : o.src === "cap" ? `<span class="tag">P80</span>` : o.src === "low" ? `<span class="tag">дёшево?</span>` : "";
-  return `<td>${tag2}<span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${extra}${cityHtml(o.city)}<span class="age">${o.age !== undefined ? (o.manual ? "★ " : "") + fmtAge(o.age) : srcAge(o)}</span></div></td>`;
+  return `<td${midTitle(o)}>${tag2}<span class="v">${fmt(price ?? o.price)}</span>${tag}<div class="where">${extra}${cityHtml(o.city)}<span class="age">${o.age !== undefined ? (o.manual ? "★ " : "") + fmtAge(o.age) : srcAge(o)}</span></div></td>`;
 }
 const liqDot = (vol) => { const l = liquidity(vol); return `<span class="liq ${l.cls}" title="${esc(l.txt)}"></span>`; };
 // короткая подпись источника цены: «Martlock · ордер · <1 ч · ~70 556 в день»
@@ -1129,6 +1140,7 @@ function metaLine(o, withVol = true) {
   const lbl = { order: "ордер", live: "лот", hist: "медиана 7 д", cap: "P80", low: "дёшево? взята P20" }[o.src] || "";
   const parts = [cityHtml(o.city), lbl, o.age !== undefined ? fmtAge(o.age) : ""];
   if (withVol && o.src === "order" && isFinite(o.vol)) parts.push(`~${nf0.format(o.vol)} в день`);
+  if (o.mid) parts.push(`середина из ${o.mid} гор.; лучший — ${o.best.city} ${fmt(o.best.unit ?? o.best.price)}`);
   return parts.filter(Boolean).join(" · ");
 }
 // ---------- свой вариант в деталях строки ----------
@@ -1973,7 +1985,7 @@ function bindSettings() {
     const el = $(`s-tab-${v}`); el.checked = viewOn(v);
     el.addEventListener("change", () => { st.tabs = { ...st.tabs, [v]: el.checked }; save(); applyTabs(); if (!el.checked && S.view === v) location.hash = "refine"; if (v === "fav") rerenderAll(); });
   }
-  $("s-mode").value = st.mode; $("s-age").value = st.age;
+  $("s-mode").value = st.mode; $("s-age").value = st.age; $("s-pick").value = st.pick || "mid";
   $("s-rrr").value = st.rrr; $("s-rrrc").value = st.rrrc; $("s-fee").value = st.fee; $("s-food").value = st.food ?? 0; foodHint();
   $("s-margin").value = st.margin; $("s-buffer").value = st.buffer; $("s-relist").value = st.relist ?? 0; $("s-buy").value = st.order ? "order" : "now";
   $("s-bfam").value = st.bonusFam || ""; $("s-bpct").value = String(st.bonusPct || 10);
@@ -1984,6 +1996,7 @@ function bindSettings() {
   on("s-margin", (el) => (st.margin = el.value)); on("s-buffer", (el) => (st.buffer = el.value)); on("s-relist", (el) => (st.relist = el.value));
   on("s-buy", (el) => (st.order = el.value === "order"), "change"); on("s-age", (el) => (st.age = el.value));
   on("s-mode", (el) => (st.mode = el.value), "change");
+  on("s-pick", (el) => (st.pick = el.value), "change");
   on("s-bfam", (el) => (st.bonusFam = el.value), "change"); on("s-bpct", (el) => (st.bonusPct = +el.value), "change");
   ["s-m1", "s-m2", "s-m3"].forEach((id, i) => on(id, (el) => (st.m[i] = el.value)));
   $("s-server").addEventListener("change", (e) => { st.server = e.target.value; save(); sumHint(); tickerLoaded = false; route(); loadTicker(); });
@@ -2189,7 +2202,7 @@ function potDet(r) {
     return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small><small class="plim" title="${esc(limTip)}">${limTxt}</small></span>${favBtn(x.id, true)}</span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
   const how0 = r.ing.some((x) => x.o.src === "order") ? `свой ордер (лучший ордер +1), если ордеров нет — лот. «За крафт» — сколько уйдёт на ингредиент за один крафт: цена × количество, для ордера ещё +${fmtPct(orderFee() - 1)} сбора за выставление${relists() ? " с учётом перевыставлений" : ""}` : "самый дешёвый лот. «За крафт» — цена × количество на один крафт";
-  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — город, по которому считаем (сначала самый дешёвый). Клик по цене — считать этот ингредиент в этом городе, двойной клик — вписать свою цену (★), Enter — сохранить, Esc — отменить, пустое поле — вернуть цену с сервера. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
+  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — город, по которому считаем (сначала — как в «Условиях»: типичный или самый дешёвый). Клик по цене — считать этот ингредиент в этом городе, двойной клик — вписать свою цену (★), Enter — сохранить, Esc — отменить, пустое поле — вернуть цену с сервера. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
   h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт. ${hint(legend)}</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
       <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div></div><div class="pstack">`;
