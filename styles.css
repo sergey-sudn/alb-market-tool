@@ -991,3 +991,9 @@ button.var.top,.det-b button.ws.top,.pdet .ws.pp.top{box-shadow:inset 0 0 0 1.5p
 .mark-legend .mk{display:inline-block;width:14px;height:10px;border-radius:3px}
 .mark-legend .mk.top{box-shadow:inset 0 0 0 1.5px var(--good)}
 .mark-legend .mk.use{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent);margin-left:8px}
+/* избранное: отклонение от лучшей цены и допуск */
+.fav-dev{font-size:inherit;font-weight:600;color:var(--muted);margin-right:5px}
+.fav-dev.ok{color:var(--good)}
+.fav-dev.far{color:var(--warn,#f0c24b)}
+.fav-tol{display:inline-flex;align-items:center;gap:6px}
+.fav-tol input{width:58px;height:32px;padding:0 8px;text-align:right}

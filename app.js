@@ -78,13 +78,13 @@ const S = {
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1, potTop: "margin", potFav: false,
   // избранное и цены, введённые вручную: manual["сервер|id"][город] = { s: [цена лота, время], b: [цена ордера, время] }
-  fav: [], manual: {}, favInc: "ask", favSide: "both", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false, roadHist: [],
+  fav: [], manual: {}, favInc: "ask", favSide: "both", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false, favTol: "", roadHist: [],
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["j2", "buy", "bm", "roadHist", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["j2", "buy", "bm", "roadHist", "favTol", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -2574,7 +2574,7 @@ const favSides = () => (S.favSide === "s" ? ["sell"] : S.favSide === "b" ? ["buy
 const FAV_TAG = { sell: `<span class="ptag s">продают</span>`, buy: `<span class="ptag b">покупают</span>` };
 // лучшие цены строки — как на «Ценах»: в «продают» и «покупают» по городам из «Условий»
 function favBest(id, cities) {
-  const { q, bestS, bestB } = cityQuotes(id, cities), out = { s: null, b: null };
+  const { q, bestS, bestB } = cityQuotes(id, cities), out = { s: null, b: null, q, bestS, bestB };
   for (const c of cities) {
     const x = q[c]; if (!x) continue;
     if (x.s && !x.s.odd && x.s.age <= maxAge() && x.s.p === bestS && !out.s) out.s = c;
@@ -2582,7 +2582,18 @@ function favBest(id, cities) {
   }
   return out;
 }
-function favInput(id, c, side, ord, compact = false, best = false) {
+// насколько цена в городе хуже лучшей: у закупки «+5%» — дороже лучшей, у продажи «−5%» — дешевле.
+// С допуском из фильтра: в пределах — зелёным (стоит ставить ордер и здесь), дальше — жёлтым
+function favDev(bst, c, side) {
+  if (!bst || !bst.q) return "";
+  const x = bst.q[c] && bst.q[c][side === "sell" ? "s" : "b"], best = side === "sell" ? bst.bestS : bst.bestB;
+  if (!x || x.odd || x.age > maxAge() || !isFinite(best) || !best || c === (side === "sell" ? bst.s : bst.b)) return "";
+  const d = (x.p - best) / best, a = Math.abs(d), tol = num(S.favTol);
+  const cls = S.favTol === "" || S.favTol == null || !isFinite(tol) ? "" : a <= tol / 100 + 1e-9 ? " ok" : " far";
+  const txt = a < 0.0005 ? "0%" : `${d > 0 ? "+" : "−"}${a < 0.1 ? nf1.format(a * 100) : nf0.format(a * 100)}%`;
+  return `<small class="fav-dev${cls}" title="${esc(a < 0.0005 ? `Столько же, сколько лучшая цена (${fmt(best)})` : `${d > 0 ? "Дороже" : "Дешевле"} лучшей цены (${fmt(best)}) на ${txt.slice(1)}`)}">${txt}</small>`;
+}
+function favInput(id, c, side, ord, compact = false, best = false, dev = "") {
   const sd = side === "sell" ? "s" : "b", man = S.manual[`${S.settings.server}|${id}`] || {}, m = man[c] && man[c][sd], a = apiOf(id, c, side);
   const mine = m && (!a || m[1] >= a.t) && (Date.now() - m[1]) / 36e5 <= maxAge();
   const aAge = a ? (Date.now() - a.t) / 36e5 : NaN;
@@ -2599,7 +2610,7 @@ function favInput(id, c, side, ord, compact = false, best = false) {
     : a ? `<small class="fav-src${fresh ? " fresh" : ""}">${code}${compact ? "" : "сервер · "}${fmtAge(aAge)}${compact ? "" : " назад"}${aAge > maxAge() ? (compact ? " ✕" : " (устарела)") : ""}${oddR ? (compact ? " ⚠" : " · не в расчёте") : ""}</small>` : `<small class="fav-src">${code}${compact ? "" : "нет цены"}</small>`;
   const bc = best ? ` best-${sd}` : "";
   const tip = oddR ? oddTip : best ? "Лучшая цена — как на «Ценах»" : "";
-  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${oddR ? " odd" : ""}${compact ? " sm" : ""}${bc}"${tip ? ` title="${esc(tip)}"` : ""}><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${src}`;
+  return `<label class="fav-in${mine ? " on" : ""}${fresh ? " fresh" : ""}${oddR ? " odd" : ""}${compact ? " sm" : ""}${bc}"${tip ? ` title="${esc(tip)}"` : ""}><input type="text" inputmode="numeric" autocomplete="off" data-i="${esc(id)}" data-c="${esc(c)}" data-s="${sd}" data-ord="${ord}" value="${mine ? fmt(m[0]) : ""}" placeholder="${ph}" aria-label="${esc(itemLabel(id))}, ${esc(c)}: ${side === "sell" ? "продают (заказы на продажу)" : "покупают (заказы на покупку)"}"><i aria-hidden="true">★</i></label>${dev ? src.replace(/^(<small[^>]*>)/, `$1${dev}`) : src}`;
 }
 // редактор: по каждому городу — самый дешёвый лот и лучший ордер на закупку.
 // У зелья сразу и его ингредиенты: обходишь город — вписываешь всё, что нужно для крафта
@@ -2623,7 +2634,7 @@ function favEditor(id, pots, mob = false) {
     // ноутбук: строки — зелье и ингредиенты, столбцы — города (лот и ордер)
     grid = `<div class="fav-mxw"><table class="fav-mx${sds.length === 1 ? " fav-one" : ""}"><thead><tr><th scope="col" rowspan="2"></th>${cities.map((c) => `<th scope="colgroup" colspan="${sds.length}">${cityBadge(c)}</th>`).join("")}</tr>
       <tr>${cities.map(() => sds.map((sd) => `<th scope="col">${FAV_TAG[sd]}</th>`).join("")).join("")}</tr></thead>
-      <tbody>${items.map((it, k) => { const bst = favBest(it[0], cities); return `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => sds.map((sd) => `<td>${favInput(it[0], c, sd, ci * 1000 + k * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c)}</td>`).join("")).join("")}</tr>`; }).join("")}</tbody></table></div>`;
+      <tbody>${items.map((it, k) => { const bst = favBest(it[0], cities); return `<tr${k ? "" : ' class="fav-pot"'}><th scope="row">${itemName(it, k)}</th>${cities.map((c, ci) => sds.map((sd) => `<td>${favInput(it[0], c, sd, ci * 1000 + k * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c, favDev(bst, c, sd))}</td>`).join("")).join("")}</tr>`; }).join("")}</tbody></table></div>`;
   }
   return `<div class="fav-ed${rec ? " pot" : ""}" data-items="${esc(JSON.stringify(items.map((x) => x[0])))}"><div class="det-b fav-grid"><h4>${rec ? "Цены зелья и ингредиентов" : "Цены по городам"} <span class="phint" tabindex="0" title="${esc(tip)}">?</span></h4>${grid}${act}</div><div class="fav-side">${side}</div></div>`;
 }
@@ -2686,12 +2697,15 @@ function renderFav() {
   const seg = (items, cur, attr) => `<span class="seg">${items.map(([v, l]) => `<button type="button" ${attr}="${v}" aria-pressed="${cur === v}">${l}</button>`).join("")}</span>`;
   $("fav-ctrl").innerHTML = `<span class="fsum">Вид</span><span class="chips" id="fav-kinds"></span><span class="fsum">Тир</span><span class="chips tier-chips" id="fav-tiers"></span>`
     + `<span class="fav-sidef"><span class="fsum" title="«Продают» — самая низкая цена в заказах на продажу: за столько можно купить сразу. «Покупают» — самая высокая цена в заказах на покупку: за столько можно продать сразу">Цены</span>${seg([["both", "обе"], ["s", "продают"], ["b", "покупают"]], S.favSide || "both", "data-fside")}</span>`
+    + `<label class="fav-tol" title="Какое отклонение от лучшей цены считать приемлемым: в пределах — зелёным, дальше — жёлтым. Пусто — без подсветки"><span class="fsum">Допуск</span><input class="in" id="fav-tol" type="number" min="0" max="100" step="1" inputmode="decimal" placeholder="—" value="${esc(S.favTol ?? "")}"><span class="k">%</span></label>`
     + `<label class="switch"><input type="checkbox" id="fav-man"${S.favMan ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только с ручными ценами</span></label>`
     + `<span class="fav-inc"><span class="fsum">Ингредиенты с зельем</span>${seg([["ask", "спрашивать"], ["yes", "добавлять"], ["no", "не добавлять"]], S.favInc, "data-finc")}</span>`;
   chips($("fav-kinds"), [["all", "Все"], ...FAV_KINDS.map(([k, l]) => [k, k === "ing" ? "Ингредиенты" : l])], (v) => v === S.favKind, (v) => { S.favKind = v; save(); renderFav(); });
   chips($("fav-tiers"), [["all", "Все"], ...tierItems(ALL_TIERS)], (v) => (v === "all" ? allT : S.favTiers.includes(v) && !allT),
     (v) => { S.favTiers = v === "all" ? [...ALL_TIERS] : allT ? [v] : toggleIn(S.favTiers, v, ALL_TIERS); save(); renderFav(); }, (v) => (v === "all" ? "" : tierCls(v)));
   $("fav-man").addEventListener("change", (e) => { S.favMan = e.target.checked; save(); renderFav(); });
+  $("fav-tol").addEventListener("change", (e) => { const v = e.target.value.trim(); S.favTol = v === "" ? "" : String(Math.max(0, Math.min(100, num(v) || 0))); save(); renderFav(); });
+  $("fav-tol").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
   $("fav-ctrl").querySelectorAll("[data-finc]").forEach((b) => b.addEventListener("click", () => { S.favInc = b.dataset.finc; save(); renderFav(); }));
   $("fav-ctrl").querySelectorAll("[data-fside]").forEach((b) => b.addEventListener("click", () => { S.favSide = b.dataset.fside; save(); renderFav(); }));
 
@@ -2719,7 +2733,7 @@ function renderFav() {
       const ic = parseId(r.id) ? icon(r.id, 36) : fishIcon(r.id, 36);
       const mg = r.k === "ing" ? `<span class="empty" title="Своей маржи нет — смотри зелья в деталях">—</span>` : isFinite(r.m) ? `<b style="color:${levelColor(r.m, r.p, calcSettings().m)}">${r.m < 0 ? "−" : ""}${nf0.format(Math.abs(r.m * 100))}%</b>` : `<span class="empty">—</span>`;
       h += `<tr class="rrow fav-row${open ? " open" : ""}" data-key="${esc(r.id)}" aria-expanded="${open}"><td><div class="item"><button type="button" class="fav-tg" aria-label="Подробнее" aria-expanded="${open}">${CHEV}</button>${ic}<div class="iname"><button type="button" class="fav-copy" data-copy="${esc(itemLabel(r.id))}" title="Скопировать название — чтобы вставить в поиск на рынке">${esc(itemLabel(r.id))}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg></button></div>${favBtn(r.id)}</div></td>`
-        + ((bst) => cities.map((c, ci) => sds.map((sd, j) => `<td class="${j ? "fav-c2" : "fav-c"}"${j ? "" : ` style="--cc:${CITY_COLOR[c]}"`}>${favInput(r.id, c, sd, ci * 100000 + rowN * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c)}</td>`).join("")).join(""))(favBest(r.id, cities))
+        + ((bst) => cities.map((c, ci) => sds.map((sd, j) => `<td class="${j ? "fav-c2" : "fav-c"}"${j ? "" : ` style="--cc:${CITY_COLOR[c]}"`}>${favInput(r.id, c, sd, ci * 100000 + rowN * 2 + (sd === "buy" ? 1 : 0), true, (sd === "sell" ? bst.s : bst.b) === c, favDev(bst, c, sd))}</td>`).join("")).join(""))(favBest(r.id, cities))
         + `<td>${mg}</td></tr>`
         + `<tr class="det"${open ? "" : " hidden"}><td colspan="${NC}"><div data-fdet="${esc(r.id)}">${open ? favDetail(r, pots) : ""}</div></td></tr>`;
       rowN++;
