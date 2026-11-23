@@ -940,3 +940,10 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .bm-x:hover{border-color:var(--accent)}
 .bm-min .in.sm{width:64px}
 @media (max-width:760px){.bm-f .seg{flex-wrap:wrap;max-width:100%}.bm-f>*{min-width:0}.bm-min{flex-wrap:wrap}}
+/* зелья: выбор цены кликом, своя цена — двойным кликом */
+.pdet .pp{cursor:pointer;user-select:none;-webkit-user-select:none}
+.grid tr.det .imx td.pp:hover .qc,.pdet .imx td.pp:hover .qc{background:var(--hover)}
+.pdet .pp:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:7px}
+.pdet .ws.pp:hover{background:var(--hover)}
+.pdet .ws.pp.on:hover{background:var(--accent-soft)}
+.pdet input.pin{width:76px;padding:3px 6px;font:inherit;font-size:13px;text-align:right;height:auto;min-height:0;user-select:text;-webkit-user-select:text}
