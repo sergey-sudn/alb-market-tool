@@ -388,6 +388,18 @@ function sellIn(id, city) {
 // случайных цен: по ней обычно лежит пара лотов или стоит ордер, который тут же перебьют, и объём там не собрать.
 // «Типичный» — город из середины (при чётном числе — тот, что хуже): стак так и собирают, ордерами в нескольких городах
 const midPick = () => S.settings.pick !== "best";
+const pickWord = () => (midPick() ? "По средним ценам" : "По лучшим ценам");
+// переключатель «Цены: средние / лучшие» на страницах — то же, что «Какой город брать» в «Условиях»
+const PICK_TIP = "Средние — город из середины по ценам городов (при чётном числе — тот, что хуже): так стак и собирают, ордерами в нескольких городах. Лучшие — самая выгодная цена в каждом городе, как считалось раньше: по ней обычно лежит пара лотов или стоит ордер, который тут же перебьют";
+const pickSeg = () => `<span class="seg pickseg" role="group" aria-label="Цены в расчёте" title="${esc(PICK_TIP)}">${[["mid", "средние цены"], ["best", "лучшие цены"]].map(([v, l]) => `<button type="button" data-setpick="${v}" aria-pressed="${(S.settings.pick || "mid") === v}">${l}</button>`).join("")}</span>`;
+function bindPickSeg(root) {
+  root.querySelectorAll("[data-setpick]").forEach((b) => b.addEventListener("click", () => {
+    if (S.settings.pick === b.dataset.setpick) return;
+    S.settings.pick = b.dataset.setpick; save();
+    if ($("s-pick")) $("s-pick").value = S.settings.pick;
+    rerenderAll(); if (S.view === "refine") renderRefineControls();
+  }));
+}
 const midOf = (arr) => arr[midPick() ? Math.floor(arr.length / 2) : 0];
 // сравниваем с учётом комиссии ордера; o.paid — сколько реально уходит серебра за 1 шт.
 function pickBuy(id) {
@@ -1006,6 +1018,7 @@ function renderRefineControls() {
   if (!sm.options.length) SORTS.forEach(([v, l]) => sm.add(new Option(l, v)));
   sm.value = S.rSort;
   $("r-onlyplus").checked = S.rOnlyPlus;
+  const ps = $("r-pick"); ps.innerHTML = `<span class="flabel">Цены</span>${pickSeg()}`; bindPickSeg(ps);
   const parts = [famsText(S.rFams), tiersText(S.rTiers)];
   if (S.rEnchs.join() !== "0") parts.push(S.rEnchs.map((e) => "." + e).join(" "));
   if (S.rOnlyPlus) parts.push("в плюсе");
@@ -1238,8 +1251,8 @@ function detHtml(r) {
   let h = `<div class="det-grid" data-rk="${rowKey(r)}">`;
   if (r.custom) {
     const b = r.best;
-    h += `<div class="pickbar"><span><b>Свой вариант.</b> ${b.ok ? `Лучший: маржа ${nf0.format(b.margin * 100)}%, ${fmtBig(b.profit * STACK)} за стак.` : ""}${r.ok && b.ok ? ` Разница <b class="${r.profit - b.profit >= 0 ? "pos" : "neg"}">${fmtBig((r.profit - b.profit) * STACK)}</b> за стак.` : ""}</span>`
-      + `<button type="button" class="btn ghost" data-pick="reset">↺ К лучшему</button></div>`;
+    h += `<div class="pickbar"><span><b>Свой вариант.</b> ${b.ok ? `${pickWord()}: маржа ${nf0.format(b.margin * 100)}%, ${fmtBig(b.profit * STACK)} за стак.` : ""}${r.ok && b.ok ? ` Разница <b class="${r.profit - b.profit >= 0 ? "pos" : "neg"}">${fmtBig((r.profit - b.profit) * STACK)}</b> за стак.` : ""}</span>`
+      + `<button type="button" class="btn ghost" data-pick="reset" title="Убрать свой выбор и считать по ${pickWord().toLowerCase()}">↺ Сбросить выбор</button></div>`;
   }
   h += `<div class="det-b"><h4>Рецепт на 1 крафт</h4>`
     + kv(lnk(rawId(r.f, r.t, k || r.e), `${esc(rawName)} ×${N[r.t]}`), r.raw ? `${fmt(r.raw.unit)}${k ? ` <span class="eq">(.0 — ${fmt(r.raw.price)})</span>` : ""}` : "нет цены")
@@ -1286,7 +1299,7 @@ function renderRefine() {
   for (const r of rows) {
     const key = rowKey(r), open = rOpen.has(key);
     const name = esc(itemLabel(r.id)), recipe = esc(recipeText(r));
-    const bonus = (r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : "") + (r.custom ? ` <span class="tag ord" title="Цены и города выбраны вручную в деталях. Сортировка — по лучшему варианту">свой вариант</span>` : "");
+    const bonus = (r.c.bonus ? ` <span class="tag" title="Ежедневный бонус переработки">бонус</span>` : "") + (r.custom ? ` <span class="tag ord" title="Цены и города выбраны вручную в деталях. Сортировка — по варианту без своего выбора">свой вариант</span>` : "");
     h += `<tr tabindex="0" class="rrow${open ? " open" : ""}" data-key="${key}" aria-expanded="${open}"><td><div class="item">${CHEV}${icon(r.id, 40)}<div class="iname"><b>${name}${bonus}</b><small title="${recipe}">${recipe}</small></div>${favBtn(r.id)}</div></td>`;
     h += priceCell(r.raw, r.raw && r.raw.unit) + priceCell(r.prev, undefined, "", r.own ? `<span class="tag own" title="Сделать самому: ${fmt(r.own.cost)} вместо ${fmt(r.prev.paid)}">свой −${nf0.format(r.own.save * 100)}%</span>` : "") + priceCell(r.sell, undefined, r.sell ? liqDot(r.sell.vol) : "");
     const ser = r.sell ? series7(r.id, r.sell.city) : null;
@@ -2173,8 +2186,8 @@ function potDet(r) {
   let h = `<div class="det-grid pdet">`;
   if (r.custom) {
     const b = potRows(false).find((x) => x.id === r.id);
-    h += `<div class="pickbar"><span><b>Свой выбор городов.</b> ${b && b.ok ? `Лучший: маржа ${nf0.format(b.margin * 100)}%, ${fmtBig(b.profit * STACK)} за стак.` : ""}${r.ok && b && b.ok ? ` Разница <b class="${r.profit - b.profit >= 0 ? "pos" : "neg"}">${fmtBig((r.profit - b.profit) * STACK)}</b> за стак.` : ""}</span>`
-      + `<button type="button" class="btn ghost" data-ppreset="${esc(r.id)}">↺ К лучшему</button></div>`;
+    h += `<div class="pickbar"><span><b>Свой выбор городов.</b> ${b && b.ok ? `${pickWord()}: маржа ${nf0.format(b.margin * 100)}%, ${fmtBig(b.profit * STACK)} за стак.` : ""}${r.ok && b && b.ok ? ` Разница <b class="${r.profit - b.profit >= 0 ? "pos" : "neg"}">${fmtBig((r.profit - b.profit) * STACK)}</b> за стак.` : ""}</span>`
+      + `<button type="button" class="btn ghost" data-ppreset="${esc(r.id)}" title="Убрать свой выбор и считать по ${pickWord().toLowerCase()}">↺ Сбросить выбор</button></div>`;
   }
   const hint = (t) => `<span class="phint" tabindex="0" title="${esc(t)}">?</span>`;
   // ингредиенты: строки — ингредиенты, столбцы — города «покупаю»; самый дешёвый город подсвечен
@@ -2202,7 +2215,7 @@ function potDet(r) {
     return `<tr><th scope="row"><span class="ingn">${fishIcon(x.id, 26)}<span><b>${esc(itemLabel(x.id))}</b><small>×${x.n}${isRareAlch(x.id) ? " · без возврата" : ""}</small><small class="plim" title="${esc(limTip)}">${limTxt}</small></span>${favBtn(x.id, true)}</span></th>${cells}<td class="sum">${fmt(x.n * x.o.paid)}</td></tr>`;
   }).join("");
   const how0 = r.ing.some((x) => x.o.src === "order") ? `свой ордер (лучший ордер +1), если ордеров нет — лот. «За крафт» — сколько уйдёт на ингредиент за один крафт: цена × количество, для ордера ещё +${fmtPct(orderFee() - 1)} сбора за выставление${relists() ? " с учётом перевыставлений" : ""}` : "самый дешёвый лот. «За крафт» — цена × количество на один крафт";
-  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — город, по которому считаем (сначала — как в «Условиях»: типичный или самый дешёвый). Клик по цене — считать этот ингредиент в этом городе, двойной клик — вписать свою цену (★), Enter — сохранить, Esc — отменить, пустое поле — вернуть цену с сервера. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
+  const legend = `Цена — ${how0.replace(/<[^>]+>/g, "")}. Рамка — город, по которому считаем (сначала — по переключателю «Цены»: город из середины или самый дешёвый). Клик по цене — считать этот ингредиент в этом городе, двойной клик — вписать свою цену (★), Enter — сохранить, Esc — отменить, пустое поле — вернуть цену с сервера. Цвет цены — какая выйдет маржа зелья, если купить этот ингредиент по этой цене, а остальные — где дешевле всего: зелёный — твоя маржа ${nf0.format(tgt * 100)}% и выше, жёлтый — в плюсе, но меньше, красный — в минусе. «Бери до» — по какую цену ингредиент ещё даёт твою маржу; при наведении — цена безубытка. Рядом с ценой — её возраст, старше суток — жёлтым. При наведении — маржа по этой цене, обычный диапазон за неделю и объём продаж.`;
   h += `<div class="det-b ing"><h4>Ингредиенты на 1 крафт → ${r.out} шт. ${hint(legend)}</h4>
     <div class="imx-wrap"><table class="imx"><thead>${head}</thead><tbody>${body}</tbody>
       <tfoot><tr><th scope="row">Всего за крафт</th><td colspan="${cities.length}"></td><td class="sum">${fmt(r.inputs)}</td></tr></tfoot></table></div></div><div class="pstack">`;
@@ -2351,12 +2364,14 @@ function renderPot() {
     + `<span class="fsum">Фокус</span>${seg("potFocus", [["false", "без фокуса"], ["true", "с фокусом"]])}`
     + `<label class="switch"><input type="checkbox" id="pot-plus"${S.potPlus ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только в плюсе</span></label>`
     + (viewOn("fav") ? `<label class="switch"><input type="checkbox" id="pot-fav"${S.potFav ? " checked" : ""}><span class="sw" aria-hidden="true"></span><span>Только избранное</span></label>` : "")
+    + pickSeg()
     + `<span class="k">возврат ${fmtPct(S.potFocus ? rf : r0)}</span>`
     + `<span class="mob pot-sortm"><span class="fsum">Сортировка</span>${seg("potSort", [["margin", "маржа"], ["profit", "за 1 шт."], ["vol", "продажи"]])}</span>`;
   chips($("pot-tiers"), [["all", "Все"], ...tierItems(POT_TIERS)], (v) => (v === "all" ? allT : S.potTiers.includes(v) && !allT),
     (v) => { S.potTiers = v === "all" ? [...POT_TIERS] : allT ? [v] : toggleIn(S.potTiers, v, POT_TIERS); save(); renderPot(); }, (v) => (v === "all" ? "" : tierCls(v)));
   $("pot-ctrl").querySelectorAll("[data-pk]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.pk; S[k] = k === "potFocus" ? b.dataset.v === "true" : b.dataset.v; if (k === "potSort") S.potDir = -1; save(); renderPot(); }));
   $("pot-plus").addEventListener("change", (e) => { S.potPlus = e.target.checked; save(); renderPot(); });
+  bindPickSeg($("pot-ctrl"));
   if ($("pot-fav")) $("pot-fav").addEventListener("change", (e) => { S.potFav = e.target.checked; save(); renderPot(); });
   const ingTip = (r) => r.ing.map((x) => `${itemLabel(x.id)} ×${x.n}: ${x.o ? `${fmt(x.o.price)} в ${x.o.city}${x.o.src === "order" ? " (свой ордер)" : ""}` : "нет цены"}`).join("\n") + (r.ok ? `\nНа выходе ${r.out} шт. за крафт` : "");
   const sh = (k, label, tip) => { const on = S.potSort === k; return `<th scope="col" aria-sort="${on ? (dir < 0 ? "descending" : "ascending") : "none"}"><button type="button" class="sorth${on ? " on" : ""}" data-sort="${k}" title="${tip}">${label}<span class="arr" aria-hidden="true">${on ? (dir < 0 ? "↓" : "↑") : "↕"}</span></button></th>`; };
