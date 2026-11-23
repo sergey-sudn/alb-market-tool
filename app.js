@@ -78,13 +78,13 @@ const S = {
   rFams: [...FAMS], rTiers: [5, 6, 7, 8], rEnchs: [0], rOnlyPlus: false, rSort: "margin", rTop: "margin", shopStacks: 1, limits: {},
   cFam: "stone", cTiers: [5, 6, 7, 8], calc: {}, budget: 5000000, bTier: null, fishWeed: "market", potWhere: "brec", potFocus: false, potPlus: false, potTiers: [2, 3, 4, 5, 6, 7, 8], potSort: "margin", potDir: -1, potTop: "margin", potFav: false,
   // избранное и цены, введённые вручную: manual["сервер|id"][город] = { s: [цена лота, время], b: [цена ордера, время] }
-  fav: [], manual: {}, favInc: "ask", favSide: "both", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false,
+  fav: [], manual: {}, favInc: "ask", favSide: "both", favKind: "all", favTiers: [2, 3, 4, 5, 6, 7, 8], favMan: false, roadHist: [],
   jf: { type: "buy", cycle: "new", f: "stone", t: 6, e: 0, what: "raw", city: "Bridgewatch", order: true, fee: "0.065" },
 };
 for (const f of FAMS) S.calc[f] = emptyCalc();
 function emptyCalc() { const o = {}; for (const t of REFINE_TIERS) o[t] = { raw: null, prev: null, sell: null, own: false, note: {} }; return o; }
 
-const KEYS = ["j2", "buy", "bm", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
+const KEYS = ["j2", "buy", "bm", "roadHist", "fav", "manual", "favInc", "favSide", "favKind", "favTiers", "favMan", "fishWeed", "potWhere", "potFocus", "potPlus", "potTiers", "potSort", "potDir", "potTop", "potFav", "view", "pFams", "pTiers", "pKind", "pEnchs", "pMode", "pMat", "pItem", "rFams", "rTiers", "rEnchs", "rOnlyPlus", "rSort", "rTop", "shopStacks", "limits", "cFam", "cTiers", "budget", "bTier"];
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -3552,8 +3552,154 @@ function renderBm(fromHist = false) {
 }
 function openBm(force) { renderBmCtrl(); renderBm(); bmLoad(!!force); }
 
+// ---------- вкладка «Дороги»: поиск зоны ----------
+// ZONES (zones.js): [название, тип, тир, соседи, у дорог — [данжи соло, групповые, элитные, ресурсы]]
+const ZT = {
+  BLUE: ["Синяя зона", "blue"], YELLOW: ["Жёлтая зона", "yellow"], RED: ["Красная зона", "red"],
+  CITY: ["Королевский город", "blue"], CAERLEON: ["Карлеон", "red"], BRECILIEN: ["Бресилиен", "black"], PORTAL: ["Портал-город Внешних земель", "black"], REST: ["Город Внешних земель", "black"],
+  PSG_SAFEAREA: ["Подземный проход", "blue"], PSG_YELLOW: ["Подземный проход", "yellow"], PSG_RED: ["Подземный проход", "red"], PSG_BLACK: ["Подземный проход", "black"],
+  ROYAL: ["Дорога Авалона → королевские зоны", "road"], ROYAL_RED: ["Дорога Авалона → красные зоны", "road"],
+  BLACK_LOW: ["Дорога Авалона → Внешние земли (ближние)", "road"], BLACK_MEDIUM: ["Дорога Авалона → Внешние земли (средние)", "road"], BLACK_HIGH: ["Дорога Авалона → Внешние земли (дальние)", "road"],
+  LOW: ["Дорога Авалона, 2-й слой", "road"], MEDIUM: ["Дорога Авалона, 2-й слой", "road"], HIGH: ["Дорога Авалона, 2-й слой", "road"],
+  DEEP: ["Глубокая дорога Авалона", "road"], DEEP_RAID: ["Рейдовый хаб Авалона", "road"], HIDEOUT: ["Узловая дорога Авалона", "road"], HIDEOUT_DEEP: ["Глубокая узловая дорога", "road"],
+};
+for (let n = 1; n <= 6; n++) ZT["BLACK" + n] = [`Чёрная зона, уровень ${n}`, "black"];
+const ROAD_OUT = { red: "в красные королевские зоны", yellow: "в жёлтые королевские зоны", blue: "в синие королевские зоны", black1: "в чёрные зоны (ближние)", black2: "в чёрные зоны (средние)", black3: "в чёрные зоны (дальние)", road: "в другие дороги Авалона", none: "портал не открывается" };
+const ROAD_RES = { O: "руда", W: "дерево", F: "волокно", H: "шкуры", S: "камень" };
+const zType = (z) => ZT[z[1]] || [z[1], "black"];
+const isRoad = (z) => !!ROAD_RULES[z[1]];
+const zHidden = (z) => /^PSG-\d/.test(z[0]);
+const zNorm = (s) => s.toLowerCase().replace(/ё/g, "е").replace(/[\s'’`\-]+/g, "");
+const Z_RU = { "карлеон": "Caerleon", "бресилиен": "Brecilien", "брецилиэн": "Brecilien", "мартлок": "Martlock", "тетфорд": "Thetford", "бриджвотч": "Bridgewatch", "бриджуотч": "Bridgewatch", "лимхерст": "Lymhurst", "фортстерлинг": "Fort Sterling" };
+let zNames = null;
+function zSearch(q) {
+  if (!zNames) zNames = ZONES.map((z) => zNorm(z[0]));
+  let n = zNorm(q); if (!n) return [];
+  for (const [ru, en] of Object.entries(Z_RU)) if (ru.startsWith(n) && n.length >= 3) n = zNorm(en);
+  const out = [];
+  ZONES.forEach((z, i) => {
+    if (zHidden(z)) return;
+    const s = zNames[i]; let sc = -1;
+    const at = s.indexOf(n);
+    if (at >= 0) sc = (s === n ? 0 : at === 0 ? 1 : 2) * 100 + at;
+    else {
+      // буквы по порядку с пропусками — как в Roadinator
+      let k = 0, gaps = 0, last = -1;
+      for (let j = 0; j < s.length && k < n.length; j++) if (s[j] === n[k]) { if (last >= 0) gaps += j - last - 1; last = j; k++; }
+      if (k === n.length) sc = 300 + gaps;
+      else if (n.length >= 5) { const d = zEdit(n, s.slice(0, n.length + 1)); if (d <= Math.floor(n.length / 5)) sc = 600 + d * 10; }
+    }
+    if (sc >= 0) out.push([sc + (isRoad(z) ? 0 : 0.5), i]);
+  });
+  return out.sort((a, b) => a[0] - b[0]).slice(0, 8).map((x) => x[1]);
+}
+// опечатки: расстояние Левенштейна (по длине запроса)
+function zEdit(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return Math.min(...prev);
+}
+// кратчайший путь до Карлеона по постоянным переходам; при равной длине — меньше красных и чёрных зон
+let zPath = null;
+function zToCaerleon() {
+  if (zPath) return zPath;
+  const start = ZONES.findIndex((z) => z[1] === "CAERLEON"), n = ZONES.length;
+  const dist = new Array(n).fill(Infinity), prev = new Array(n).fill(-1), done = new Array(n).fill(false);
+  const pvp = (z) => /RED|BLACK|CAERLEON/.test(z[1]) ? 1 : 0;
+  dist[start] = 0;
+  for (;;) {
+    let u = -1; for (let i = 0; i < n; i++) if (!done[i] && dist[i] < Infinity && (u < 0 || dist[i] < dist[u])) u = i;
+    if (u < 0) break; done[u] = true;
+    for (const v of ZONES[u][3]) { const d = dist[u] + 1000 + pvp(ZONES[v]); if (d < dist[v]) { dist[v] = d; prev[v] = u; } }
+  }
+  return (zPath = { dist, prev });
+}
+const zBadge = (z) => { const [lbl, cls] = zType(z); return `<span class="zb z-${cls}">${esc(lbl)}</span>`; };
+const zLink = (i) => { const z = ZONES[i]; return `<button type="button" class="zl z-${zType(z)[1]}" data-zone="${i}">${esc(z[0])}</button>`; };
+function roadCard(i) {
+  const z = ZONES[i], kv = (k, v) => `<div class="dl"><span>${k}</span><b>${v}</b></div>`;
+  let h = `<div class="panel road-card"><div class="rc-head"><div><h2>${esc(z[0])}</h2><div class="rc-sub">${zBadge(z)}${z[2] > 1 ? `<span class="zt">T${z[2]}</span>` : ""}</div></div>`
+    + `<button type="button" class="btn ghost" data-zcopy="${esc(z[0])}">Скопировать название</button></div><div class="det-grid rc-grid">`;
+  if (isRoad(z)) {
+    const r = ROAD_RULES[z[1]], outN = Math.round(r.n * (1 - r.inc));
+    const outs = Object.entries(r.out).sort((a, b) => (a[0] === "none") - (b[0] === "none") || b[1] - a[1]);
+    h += `<div class="det-b"><h4>Куда ведут порталы</h4>`
+      + (outs.length ? `<p class="dn">Всего порталов: ${r.n}. ${r.inc ? `Примерно ${r.n - outN} — входы из других зон (куда ведут, решает та сторона), ~${outN} — свои выходы.` : "Все — свои выходы."} Куда ведёт каждый свой выход:</p>`
+        + outs.map(([k, v]) => `<div class="rc-bar"><span>${ROAD_OUT[k]}</span><i style="--w:${Math.round(v * 100)}%" class="b-${k.replace(/\d/, "")}"></i><b>${nf0.format(v * 100)}%</b></div>`).join("")
+        : `<p class="dn">Своих выходов нет: сюда только приходят рейдовые порталы из других дорог (до ${ROAD_META.kinds.RAID[0]} проходов).</p>`)
+      + (r.out.red ? `<p class="dn">Красная зона выпадает любая из ${ZONES.filter((x) => x[1] === "RED").length} — выйдя, найди её здесь в поиске: будет видно, сколько до Карлеона.</p>` : "")
+      + `</div>`;
+    const [ds, dg, de, res] = z[4] || [0, 0, 0, ""], [lo, hi] = ROAD_META.life;
+    h += `<div class="det-b"><h4>Что в зоне</h4>`
+      + kv("Соло-данжи", ds || "—") + kv("Групповые данжи", dg || "—") + (de ? kv("Элитные данжи", de) : "")
+      + kv("Ресурсы", res ? res.split("").map((c) => ROAD_RES[c]).join(", ") : "—")
+      + `<p class="dn">Порталы живут ${lo / 3600}–${hi / 3600} ч, за час до закрытия игра предупреждает. Пропускная способность: соло — ${ROAD_META.kinds.SOLO[0]} проходов, +1 за ${ROAD_META.kinds.SOLO[1] / 60} мин; групповой — ${ROAD_META.kinds.GROUP[0]}, +1 за ${ROAD_META.kinds.GROUP[1] / 60} мин; рейдовый — ${ROAD_META.kinds.RAID[0]}, +1 за ${ROAD_META.kinds.RAID[1] / 60} мин.</p></div>`;
+  } else {
+    const { dist, prev } = zToCaerleon();
+    h += `<div class="det-b rc-path"><h4>До Карлеона</h4>`;
+    if (z[1] === "CAERLEON") h += `<p class="dn">Это сам Карлеон.</p>`;
+    else if (!isFinite(dist[i])) h += `<p class="dn">${z[1] === "BRECILIEN" ? "Из Бресилиена постоянной дороги нет: наружу — через Туманы, а их выходы меняются. Выйдешь из Тумана — найди зону здесь." : "Постоянными переходами с Карлеоном не связана — только через порталы (Авалон, Туманы, города-порталы)."}</p>`;
+    else {
+      const path = []; for (let x = i; x >= 0; x = prev[x]) path.push(x);
+      const steps = path.length - 1, pvp = path.slice(0, -1).filter((x) => /RED|BLACK/.test(ZONES[x][1])).length;
+      h += `<div class="rc-big"><b>${steps}</b><span>${plural(steps, ["переход", "перехода", "переходов"])}${pvp ? ` · ${pvp} ${plural(pvp, ["зона", "зоны", "зон"])} с полным лутом` : ""}</span></div>`
+        + `<div class="rc-steps">${path.map(zLink).join(`<span class="rc-arr" aria-hidden="true">→</span>`)}</div>`
+        + `<p class="dn">Кратчайший путь по постоянным переходам между зонами; при равной длине — где меньше красных и чёрных зон. Порталы Авалона и Туманов не учтены.</p>`;
+    }
+    h += `</div>`;
+    if (z[3].length) h += `<div class="det-b"><h4>Соседние зоны</h4><div class="rc-steps rc-nb">${[...z[3]].sort((a, b) => zToCaerleon().dist[a] - zToCaerleon().dist[b]).map(zLink).join("")}</div></div>`;
+  }
+  return h + `</div></div>`;
+}
+let roadSel = -1, roadHits = [];
+function roadPick(i) {
+  roadSel = i; const name = ZONES[i][0];
+  S.roadHist = [name, ...(S.roadHist || []).filter((x) => x !== name)].slice(0, 10); save();
+  renderRoad();
+}
+function renderRoadList() {
+  const box = $("road-list"), q = $("road-q").value;
+  const hist = (S.roadHist || []).map((n) => ZONES.findIndex((z) => z[0] === n)).filter((i) => i >= 0);
+  const list = q.trim() ? roadHits : hist;
+  box.innerHTML = (!q.trim() && list.length ? `<div class="k road-lh">Недавние</div>` : "")
+    + (q.trim() && !list.length ? `<p class="dn">Ничего не нашлось. Проверь название — у дорог Авалона оно на латинице, например Ouyos-Aoeuam.</p>` : "")
+    + list.map((i, k) => `<button type="button" role="option" class="road-it${i === roadSel ? " on" : ""}" data-zone="${i}" aria-selected="${i === roadSel}"><b>${esc(ZONES[i][0])}</b>${zBadge(ZONES[i])}</button>`).join("");
+  box.querySelectorAll("[data-zone]").forEach((b) => b.addEventListener("click", () => roadPick(+b.dataset.zone)));
+}
+function renderRoad() {
+  renderRoadList();
+  const card = $("road-card");
+  card.innerHTML = roadSel >= 0 ? roadCard(roadSel) : "";
+  card.querySelectorAll("[data-zone]").forEach((b) => b.addEventListener("click", () => { roadPick(+b.dataset.zone); $("road-q").value = ZONES[+b.dataset.zone][0]; roadHits = zSearch($("road-q").value); renderRoadList(); }));
+  card.querySelectorAll("[data-zcopy]").forEach((b) => b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(b.dataset.zcopy); toast("Название скопировано"); } catch (e) { window.prompt("Скопируй:", b.dataset.zcopy); }
+  }));
+}
+let roadBound = false;
+function openRoad() {
+  const inp = $("road-q");
+  if (!roadBound) {
+    roadBound = true;
+    inp.addEventListener("input", () => { roadHits = zSearch(inp.value); if (roadHits.length) roadSel = roadHits[0]; renderRoad(); });
+    inp.addEventListener("keydown", (e) => {
+      const list = inp.value.trim() ? roadHits : (S.roadHist || []).map((n) => ZONES.findIndex((z) => z[0] === n)).filter((i) => i >= 0);
+      if (!list.length) return;
+      const k = list.indexOf(roadSel);
+      if (e.key === "ArrowDown") { e.preventDefault(); roadSel = list[Math.min(list.length - 1, k + 1)]; renderRoad(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); roadSel = list[Math.max(0, k - 1)]; renderRoad(); }
+      else if (e.key === "Enter") { e.preventDefault(); roadPick(roadSel >= 0 ? roadSel : list[0]); }
+    });
+  }
+  renderRoad();
+  if (!isMobile()) inp.focus();
+}
+
 // дополнительные вкладки включаются в «Условиях»
-const OPT_VIEWS = ["pot", "fish", "fav", "buy", "bm"];
+const OPT_VIEWS = ["pot", "fish", "fav", "buy", "bm", "road"];
 const viewOn = (v) => !OPT_VIEWS.includes(v) || !!(S.settings.tabs || {})[v];
 function applyTabs() {
   for (const v of OPT_VIEWS) {
@@ -3565,7 +3711,7 @@ function applyTabs() {
   const tb = document.querySelector(".tabbar"); tb.style.setProperty("--tabs", n); tb.classList.toggle("many", n >= 6); fitBar();
 }
 
-const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "buy", "bm", "journal"];
+const VIEWS = ["prices", "refine", "calc", "pot", "fish", "fav", "buy", "bm", "road", "journal"];
 function route() {
   const h = location.hash.replace("#", "");
   const ok = (v) => VIEWS.includes(v) && viewOn(v);
@@ -3587,6 +3733,7 @@ function route() {
   if (S.view === "fav") openFav();
   if (S.view === "buy") openBuy();
   if (S.view === "bm") openBm();
+  if (S.view === "road") openRoad();
 }
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.view; }));
 window.addEventListener("hashchange", route);

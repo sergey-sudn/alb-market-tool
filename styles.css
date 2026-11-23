@@ -947,3 +947,35 @@ button.var.on{box-shadow:inset 0 0 0 1.5px var(--accent)}
 .pdet .ws.pp:hover{background:var(--hover)}
 .pdet .ws.pp.on:hover{background:var(--accent-soft)}
 .pdet input.pin{width:76px;padding:3px 6px;font:inherit;font-size:13px;text-align:right;height:auto;min-height:0;user-select:text;-webkit-user-select:text}
+/* дороги: поиск зоны */
+.road-search{padding:14px;display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.road-q{position:relative;display:block}
+.road-q svg{position:absolute;left:12px;top:50%;width:18px;height:18px;transform:translateY(-50%);fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round}
+.road-q input{width:100%;padding-left:38px;font-size:16px;height:44px}
+.road-list{display:flex;flex-wrap:wrap;gap:6px}
+.road-lh{width:100%}
+.road-it{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:13px;cursor:pointer;max-width:100%}
+.road-it b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.road-it:hover{background:var(--hover)}
+.road-it.on{border-color:var(--accent);background:var(--accent-soft)}
+.zb{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;white-space:nowrap;background:var(--hover);color:var(--ink-2)}
+.zb.z-blue,.zl.z-blue{--zc:#5aa9ff}.zb.z-yellow,.zl.z-yellow{--zc:#f0c24b}.zb.z-red,.zl.z-red{--zc:#ff6b6b}.zb.z-black,.zl.z-black{--zc:#a0a6b4}.zb.z-road,.zl.z-road{--zc:#3fd0c0}
+.zb{color:var(--zc);background:color-mix(in srgb,var(--zc) 14%,transparent)}
+.road-card{padding:18px}
+.rc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.rc-head h2{margin:0 0 6px;font-size:24px;word-break:break-word}
+.rc-sub{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.zt{font-size:12px;color:var(--muted);font-weight:600}
+.rc-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start}
+.rc-bar{display:grid;grid-template-columns:minmax(0,1fr) 90px 42px;gap:10px;align-items:center;font-size:13px;padding:3px 0}
+.rc-bar i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--bc,var(--accent)) var(--w),var(--hover) var(--w))}
+.rc-bar b{text-align:right}
+.rc-bar .b-red{--bc:#ff6b6b}.rc-bar .b-yellow{--bc:#f0c24b}.rc-bar .b-blue{--bc:#5aa9ff}.rc-bar .b-black{--bc:#a0a6b4}.rc-bar .b-road{--bc:#3fd0c0}.rc-bar .b-none{--bc:var(--faint)}
+.rc-big{display:flex;align-items:baseline;gap:10px;margin:2px 0 10px}
+.rc-big b{font-size:34px;line-height:1}
+.rc-big span{color:var(--muted);font-size:13px}
+.rc-steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}
+.rc-arr{color:var(--faint);font-size:12px}
+.zl{font:inherit;font-size:13px;font-weight:600;padding:4px 9px;border-radius:9px;border:1px solid color-mix(in srgb,var(--zc) 45%,transparent);background:color-mix(in srgb,var(--zc) 10%,transparent);color:var(--ink);cursor:pointer}
+.zl:hover{background:color-mix(in srgb,var(--zc) 22%,transparent)}
+@media (max-width:760px){.road-card{padding:14px}.rc-head h2{font-size:20px}.rc-bar{grid-template-columns:minmax(0,1fr) 60px 38px}}
